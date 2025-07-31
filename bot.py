@@ -333,23 +333,46 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = generate_username()
     password = generate_password()
 
+    # --- DEBUGGING: Log the command being executed ---
+    command_to_run = [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
+    print(f"Attempting to run command: {' '.join(command_to_run)}")
+    # --- END DEBUGGING ---
+
     try:
         result = subprocess.check_output(
-            [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)],
-            stderr=subprocess.STDOUT, text=True
+            command_to_run,
+            stderr=subprocess.STDOUT, 
+            text=True
         )
+        
+        # --- DEBUGGING: Log successful output ---
+        print(f"Script executed successfully. Output:\n{result}")
+        # --- END DEBUGGING ---
+
         add_user_creation(user_id, username)
         if is_feature_enabled('points_system'):
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
                 conn.commit()
 
+        # IMPORTANT: Sanitize the result for MarkdownV2
+        # Telegram's MarkdownV2 is very strict. Characters like '.', '-', '(', ')' must be escaped.
+        sanitized_result = result.replace('.', '\\.').replace('-', '\\-')
+
         await update.message.reply_text(
-            get_text('creation_success', lang_code).format(details=result, days=ACCOUNT_EXPIRY_DAYS),
+            get_text('creation_success', lang_code).format(details=sanitized_result, days=ACCOUNT_EXPIRY_DAYS),
             parse_mode=ParseMode.MARKDOWN_V2
         )
+    except subprocess.CalledProcessError as e:
+        # This catches errors specifically from the script execution
+        error_output = e.output if e.output else "No output from script."
+        print(f"❌ Script failed with exit code {e.returncode}. Output:\n{error_output}")
+        await update.message.reply_text(f"An error occurred while creating the account. Please contact the admin.\n\nDebug Info: Script failed with exit code {e.returncode}.")
     except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
+        # This catches other potential errors (e.g., file not found)
+        print(f"❌ An unexpected error occurred: {e}")
+        await update.message.reply_text(f"An unexpected error occurred. Please contact the admin.\n\nDebug Info: {e}")
+
 
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -363,8 +386,12 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for username in accounts:
         try:
             expiry = subprocess.check_output(['chage', '-l', username], text=True).split('\n')[3].split(':')[1].strip()
-            response.append(get_text('account_details', lang_code).format(username=username, expiry=expiry))
-        except Exception:
+            # Sanitize the response for MarkdownV2
+            safe_username = username.replace('_', '\\_')
+            safe_expiry = expiry.replace('-', '\\-')
+            response.append(get_text('account_details', lang_code).format(username=safe_username, expiry=safe_expiry))
+        except Exception as e:
+            print(f"Could not get expiry for {username}: {e}")
             pass
     await update.message.reply_text("\n\n".join(response), parse_mode=ParseMode.MARKDOWN_V2)
 
@@ -409,7 +436,8 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         ref_code = conn.execute("SELECT referral_code FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-    link = f"https://t.me/{context.bot.username}?start={ref_code}"
+    bot_username = (await context.bot.get_me()).username
+    link = f"https://t.me/{bot_username}?start={ref_code}"
     await update.message.reply_text(get_text('referral_info', lang_code).format(bonus=REFERRAL_BONUS, link=link), parse_mode=ParseMode.MARKDOWN)
 
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
