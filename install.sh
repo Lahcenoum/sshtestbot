@@ -5,13 +5,13 @@
 #  يقوم هذا السكربت بأتمتة جميع خطوات الإعداد على خادم Ubuntu/Debian جديد.
 # ==============================================================================
 
-# --- إعدادات أساسية (⚠️ يرجى تعديل هذا المتغير قبل التشغيل) ---
+# --- إعدادات أساسية ---
 
 # 1. رابط مستودع المشروع على GitHub
-GIT_REPO_URL="https://github.com/Lahcenoum/sshtestbot.git" # ⚠️ استبدل هذا برابط المستودع الخاص بك
+GIT_REPO_URL="https://github.com/Lahcenoum/sshtestbot.git"
 
 # 2. اسم مجلد المشروع الذي سيتم إنشاؤه
-PROJECT_DIR="/opt/ssh_bot"
+PROJECT_DIR="/home/ssh_bot"
 
 # --- نهاية قسم الإعدادات ---
 
@@ -27,14 +27,12 @@ echo "      بدء عملية تثبيت وإعداد بوت SSH من GitHub"
 echo "=================================================="
 
 # الخطوة 1: تحديث النظام وتثبيت المتطلبات الأساسية
-# تم إضافة 'git' للمتطلبات
 echo -e "\n[1/7] تحديث النظام وتثبيت المتطلبات (git, python3, pip, sqlite3)..."
 apt-get update
 apt-get install -y git python3 python3-pip sqlite3
 
 # الخطوة 2: استنساخ المشروع من GitHub
 echo -e "\n[2/7] استنساخ المشروع من GitHub إلى '$PROJECT_DIR'..."
-# حذف المجلد القديم إذا كان موجودًا لضمان نسخة نظيفة
 rm -rf "$PROJECT_DIR"
 git clone "$GIT_REPO_URL" "$PROJECT_DIR"
 
@@ -49,23 +47,20 @@ cd "$PROJECT_DIR" || exit
 
 # الخطوة 3: تنظيم الملفات ونقل السكربتات
 echo -e "\n[3/7] تنظيم الملفات ونقل السكربتات إلى المسار الصحيح..."
-# التأكد من وجود الملفات قبل نقلها
 if [ -f "create_ssh_user.sh" ]; then mv create_ssh_user.sh /usr/local/bin/; fi
 if [ -f "monitor_ssh.sh" ]; then mv monitor_ssh.sh /usr/local/bin/; fi
 if [ -f "delete_expired_users.sh" ]; then mv delete_expired_users.sh /usr/local/bin/; fi
 
-# الخطوة 4: تثبيت مكتبات بايثون
+# الخطوة 4: تثبيت مكتبات بايثون (تم التحديث)
 echo -e "\n[4/7] تثبيت مكتبات بايثون المطلوبة..."
 if [ -f "requirements.txt" ]; then
     pip3 install -r requirements.txt
+    echo "-> تم تثبيت المكتبات من requirements.txt بنجاح."
 else
-    # في حال عدم وجود ملف المتطلبات، سيقوم البوت بمحاولة التثبيت
-    python3 bot.py &
-    BOT_PID=$!
-    sleep 15 # إعطاء وقت كافٍ للبوت لتثبيت المكتبات
-    kill $BOT_PID
+    echo "⚠️ تحذير: لم يتم العثور على ملف 'requirements.txt'. قد لا يعمل البوت بشكل صحيح."
+    echo "-> سيتم محاولة تثبيت المكتبة الأساسية فقط."
+    pip3 install python-telegram-bot
 fi
-echo "-> تم إكمال محاولة تثبيت المكتبات."
 
 # الخطوة 5: إعطاء صلاحيات التنفيذ للسكربتات
 echo -e "\n[5/7] إعطاء صلاحيات التنفيذ للسكربتات..."
@@ -78,9 +73,8 @@ echo -e "\n[6/7] إعداد المهام المجدولة..."
 (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/monitor_ssh.sh" ; echo "*/5 * * * * /usr/local/bin/monitor_ssh.sh") | crontab -
 (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/delete_expired_users.sh" ; echo "0 0 * * * /usr/local/bin/delete_expired_users.sh") | crontab -
 
-# الخطوة 7: إعداد البوت كخدمة دائمة (systemd) - الطريقة الاحترافية
+# الخطوة 7: إعداد البوت كخدمة دائمة (systemd)
 echo -e "\n[7/7] إعداد البوت كخدمة دائمة (systemd)..."
-# إنشاء ملف الخدمة
 cat > /etc/systemd/system/ssh_bot.service << EOL
 [Unit]
 Description=Telegram SSH Bot Service
