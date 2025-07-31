@@ -8,7 +8,7 @@
 # --- إعدادات أساسية (⚠️ يرجى تعديل هذا المتغير قبل التشغيل) ---
 
 # 1. رابط مستودع المشروع على GitHub
-GIT_REPO_URL="https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git" # ⚠️ استبدل هذا برابط المستودع الخاص بك
+GIT_REPO_URL="https://github.com/Lahcenoum/sshtestbot.git" # ⚠️ استبدل هذا برابط المستودع الخاص بك
 
 # 2. اسم مجلد المشروع الذي سيتم إنشاؤه
 PROJECT_DIR="/opt/ssh_bot"
