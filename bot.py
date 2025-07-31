@@ -19,11 +19,12 @@ ADMIN_USER_ID = 5344028088 # ⚠️ استبدل هذا بمعرف المستخ�
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 DB_FILE = 'ssh_bot_users.db'
 
-# Default values for the points system
-COST_PER_ACCOUNT = 100
-REFERRAL_BONUS = 50
-DAILY_LOGIN_BONUS = 10
-INITIAL_POINTS = 20
+# --- قيم نظام النقاط (تم التحديث) ---
+COST_PER_ACCOUNT = 4      # تكلفة إنشاء حساب
+REFERRAL_BONUS = 4          # مكافأة دعوة صديق
+DAILY_LOGIN_BONUS = 1       # المكافأة اليومية
+INITIAL_POINTS = 2         # النقاط الأولية عند بدء البوت
+JOIN_BONUS = 4              # مكافأة الانضمام للقناة والمجموعة
 ACCOUNT_EXPIRY_DAYS = 2
 
 # Channel and Group links and IDs
@@ -71,6 +72,7 @@ TEXTS = {
         "force_join_verify_button": "✅ تحققت",
         "force_join_success": "✅ شكرًا لانضمامك! يمكنك الآن استخدام البوت.",
         "force_join_fail": "❌ لم يتم التحقق من انضمامك. يرجى التأكد من انضمامك لكليهما ثم حاول مرة أخرى.",
+        "join_bonus_awarded": "🎉 مكافأة الانضمام! لقد حصلت على **{bonus}** نقطة.",
         "redeem_prompt": "يرجى إرسال الكود الذي تريد استرداده.",
         "redeem_success": "🎉 تهانينا! لقد حصلت على **{points}** نقطة. رصيدك الآن هو **{new_balance}**.",
         "redeem_invalid_code": "❌ هذا الكود غير صالح أو غير موجود.",
@@ -113,6 +115,7 @@ TEXTS = {
         "force_join_group_button": "👥 Join Group",
         "force_join_verify_button": "✅ I have joined",
         "force_join_success": "✅ Thank you for joining! You can now use the bot.",
+        "join_bonus_awarded": "🎉 Joining Bonus! You have received **{bonus}** points.",
         "force_join_fail": "❌ Membership not verified. Please make sure you've joined both, then try again.",
         "redeem_prompt": "Please send the code you want to redeem.",
         "redeem_success": "🎉 Congratulations! You have received **{points}** points. Your new balance is **{new_balance}**.",
@@ -144,8 +147,13 @@ def init_db():
             )''')
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
-                telegram_user_id INTEGER PRIMARY KEY, language_code TEXT DEFAULT 'en', points INTEGER DEFAULT 0, 
-                referral_code TEXT, referred_by INTEGER, last_daily_claim DATE
+                telegram_user_id INTEGER PRIMARY KEY, 
+                language_code TEXT DEFAULT 'en', 
+                points INTEGER DEFAULT 0, 
+                referral_code TEXT, 
+                referred_by INTEGER, 
+                last_daily_claim DATE,
+                join_bonus_claimed INTEGER DEFAULT 0
             )''')
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS redeem_codes (
@@ -159,7 +167,8 @@ def init_db():
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY, value TEXT
             )''')
-        default_settings = {'points_system': 'disabled', 'force_join': 'disabled', 'redeem_codes': 'disabled'}
+        # تفعيل نظام النقاط والانضمام الإجباري بشكل افتراضي
+        default_settings = {'points_system': 'enabled', 'force_join': 'enabled', 'redeem_codes': 'enabled'}
         for key, value in default_settings.items():
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
         conn.commit()
@@ -276,7 +285,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
             [InlineKeyboardButton(get_text('force_join_group_button', lang_code), url=GROUP_LINK)],
             [InlineKeyboardButton(get_text('force_join_verify_button', lang_code), callback_data='verify_join')],
         ]
-        await update.message.reply_text(get_text('force_join_prompt', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+        message_entity = update.message if not from_callback else update.callback_query.message
+        await message_entity.reply_text(get_text('force_join_prompt', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     keyboard_layout = [[KeyboardButton(get_text('get_ssh_button', lang_code))]]
@@ -296,7 +306,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    lang_code = get_user_language(update.effective_user.id)
+    user_id = update.effective_user.id
+    lang_code = get_user_language(user_id)
+
+    if is_feature_enabled('force_join') and not await check_membership(user_id, context):
+        await start(update, context)
+        return
 
     button_map = {
         'get_ssh_button': get_ssh, 'my_account_button': my_account,
@@ -306,13 +321,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for key, func in button_map.items():
         if text in [get_text(key, lang) for lang in TEXTS.keys()]:
-            if is_feature_enabled('force_join') and not await check_membership(update.effective_user.id, context):
-                await start(update, context)
-            else:
-                await func(update, context)
+            await func(update, context)
             return
 
-    await start(update, context)
+    # If no button is matched, you can decide what to do.
+    # For example, show the main menu again.
+    # await start(update, context)
 
 async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -333,10 +347,8 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = generate_username()
     password = generate_password()
 
-    # --- DEBUGGING: Log the command being executed ---
     command_to_run = [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
     print(f"Attempting to run command: {' '.join(command_to_run)}")
-    # --- END DEBUGGING ---
 
     try:
         result = subprocess.check_output(
@@ -344,10 +356,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stderr=subprocess.STDOUT, 
             text=True
         )
-        
-        # --- DEBUGGING: Log successful output ---
         print(f"Script executed successfully. Output:\n{result}")
-        # --- END DEBUGGING ---
 
         add_user_creation(user_id, username)
         if is_feature_enabled('points_system'):
@@ -355,24 +364,18 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
                 conn.commit()
 
-        # IMPORTANT: Sanitize the result for MarkdownV2
-        # Telegram's MarkdownV2 is very strict. Characters like '.', '-', '(', ')' must be escaped.
         sanitized_result = result.replace('.', '\\.').replace('-', '\\-')
-
         await update.message.reply_text(
             get_text('creation_success', lang_code).format(details=sanitized_result, days=ACCOUNT_EXPIRY_DAYS),
             parse_mode=ParseMode.MARKDOWN_V2
         )
     except subprocess.CalledProcessError as e:
-        # This catches errors specifically from the script execution
         error_output = e.output if e.output else "No output from script."
         print(f"❌ Script failed with exit code {e.returncode}. Output:\n{error_output}")
         await update.message.reply_text(f"An error occurred while creating the account. Please contact the admin.\n\nDebug Info: Script failed with exit code {e.returncode}.")
     except Exception as e:
-        # This catches other potential errors (e.g., file not found)
         print(f"❌ An unexpected error occurred: {e}")
         await update.message.reply_text(f"An unexpected error occurred. Please contact the admin.\n\nDebug Info: {e}")
-
 
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -386,7 +389,6 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for username in accounts:
         try:
             expiry = subprocess.check_output(['chage', '-l', username], text=True).split('\n')[3].split(':')[1].strip()
-            # Sanitize the response for MarkdownV2
             safe_username = username.replace('_', '\\_')
             safe_expiry = expiry.replace('-', '\\-')
             response.append(get_text('account_details', lang_code).format(username=safe_username, expiry=safe_expiry))
@@ -418,6 +420,14 @@ async def verify_join_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     lang_code = get_user_language(user_id)
 
     if await check_membership(user_id, context):
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            claimed = cursor.execute("SELECT join_bonus_claimed FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
+            if claimed and claimed[0] == 0:
+                cursor.execute("UPDATE users SET points = points + ?, join_bonus_claimed = 1 WHERE telegram_user_id = ?", (JOIN_BONUS, user_id))
+                conn.commit()
+                await query.answer(get_text('join_bonus_awarded', lang_code).format(bonus=JOIN_BONUS), show_alert=True)
+        
         await query.answer(get_text('force_join_success', lang_code))
         await query.delete_message()
         await start(update, context, from_callback=True)
@@ -620,5 +630,5 @@ def main():
     print("Bot is running...")
     app.run_polling()
 
-if __name__ == '__main__': # <--- التصحيح
+if __name__ == '__main__':
     main()
