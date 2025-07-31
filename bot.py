@@ -20,10 +20,10 @@ SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 DB_FILE = 'ssh_bot_users.db'
 
 # --- قيم نظام النقاط (تم التحديث) ---
-COST_PER_ACCOUNT = 4      # تكلفة إنشاء حساب
+COST_PER_ACCOUNT = 100      # تكلفة إنشاء حساب
 REFERRAL_BONUS = 4          # مكافأة دعوة صديق
 DAILY_LOGIN_BONUS = 1       # المكافأة اليومية
-INITIAL_POINTS = 2         # النقاط الأولية عند بدء البوت
+INITIAL_POINTS = 2          # النقاط الأولية عند بدء البوت
 JOIN_BONUS = 4              # مكافأة الانضمام للقناة والمجموعة
 ACCOUNT_EXPIRY_DAYS = 2
 
@@ -73,6 +73,8 @@ TEXTS = {
         "force_join_success": "✅ شكرًا لانضمامك! يمكنك الآن استخدام البوت.",
         "force_join_fail": "❌ لم يتم التحقق من انضمامك. يرجى التأكد من انضمامك لكليهما ثم حاول مرة أخرى.",
         "join_bonus_awarded": "🎉 مكافأة الانضمام! لقد حصلت على **{bonus}** نقطة.",
+        "creation_error": "❌ حدث خطأ أثناء إنشاء الحساب. يرجى التواصل مع الأدمن.",
+        "creation_timeout": "⏳ استغرقت عملية الإنشاء وقتاً طويلاً وتم إلغاؤها. يرجى المحاولة مرة أخرى أو التواصل مع الأدمن.",
         "redeem_prompt": "يرجى إرسال الكود الذي تريد استرداده.",
         "redeem_success": "🎉 تهانينا! لقد حصلت على **{points}** نقطة. رصيدك الآن هو **{new_balance}**.",
         "redeem_invalid_code": "❌ هذا الكود غير صالح أو غير موجود.",
@@ -117,6 +119,8 @@ TEXTS = {
         "force_join_success": "✅ Thank you for joining! You can now use the bot.",
         "join_bonus_awarded": "🎉 Joining Bonus! You have received **{bonus}** points.",
         "force_join_fail": "❌ Membership not verified. Please make sure you've joined both, then try again.",
+        "creation_error": "❌ An error occurred while creating the account. Please contact the admin.",
+        "creation_timeout": "⏳ The creation process took too long and was canceled. Please try again or contact the admin.",
         "redeem_prompt": "Please send the code you want to redeem.",
         "redeem_success": "🎉 Congratulations! You have received **{points}** points. Your new balance is **{new_balance}**.",
         "redeem_invalid_code": "❌ This code is invalid or does not exist.",
@@ -167,7 +171,6 @@ def init_db():
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY, value TEXT
             )''')
-        # تفعيل نظام النقاط والانضمام الإجباري بشكل افتراضي
         default_settings = {'points_system': 'enabled', 'force_join': 'enabled', 'redeem_codes': 'enabled'}
         for key, value in default_settings.items():
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
@@ -324,10 +327,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await func(update, context)
             return
 
-    # If no button is matched, you can decide what to do.
-    # For example, show the main menu again.
-    # await start(update, context)
-
 async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang_code = get_user_language(user_id)
@@ -354,7 +353,8 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = subprocess.check_output(
             command_to_run,
             stderr=subprocess.STDOUT, 
-            text=True
+            text=True,
+            timeout=30
         )
         print(f"Script executed successfully. Output:\n{result}")
 
@@ -369,13 +369,17 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             get_text('creation_success', lang_code).format(details=sanitized_result, days=ACCOUNT_EXPIRY_DAYS),
             parse_mode=ParseMode.MARKDOWN_V2
         )
+    except subprocess.TimeoutExpired:
+        print(f"❌ Script timed out after 30 seconds.")
+        await update.message.reply_text(get_text('creation_timeout', lang_code))
     except subprocess.CalledProcessError as e:
         error_output = e.output if e.output else "No output from script."
         print(f"❌ Script failed with exit code {e.returncode}. Output:\n{error_output}")
-        await update.message.reply_text(f"An error occurred while creating the account. Please contact the admin.\n\nDebug Info: Script failed with exit code {e.returncode}.")
+        await update.message.reply_text(get_text('creation_error', lang_code))
     except Exception as e:
         print(f"❌ An unexpected error occurred: {e}")
-        await update.message.reply_text(f"An unexpected error occurred. Please contact the admin.\n\nDebug Info: {e}")
+        await update.message.reply_text(get_text('creation_error', lang_code))
+
 
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
