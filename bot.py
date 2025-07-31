@@ -620,5 +620,5 @@ def main():
     print("Bot is running...")
     app.run_polling()
 
-if __name__ == '__main__':
-    mai
+if __name__ == '__main__': # <--- التصحيح
+    main()
