@@ -58,12 +58,15 @@ if [ $? -ne 0 ]; then
 fi
 
 # --- عرض بيانات الحساب ---
+# --- عرض بيانات الحساب (نسخة محسنة) ---
 SERVER_IP=$(/usr/bin/hostname -I | /usr/bin/awk '{print $1}')
 
-echo "Host: $SERVER_IP"
+echo "Host/IP: $SERVER_IP"
+echo "Hostname: fastvpsvip.freehost000.xyz"
 echo "Username: $USERNAME"
 echo "Password: $PASSWORD"
-echo "Port: 22"
+echo "SSH Port: 22"
+echo "WebSocket Ports: 80, 8080, 8880"
 echo "Expires on: $EXPIRY_DATE"
 
 exit 0
