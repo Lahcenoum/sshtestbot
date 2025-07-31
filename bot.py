@@ -11,25 +11,6 @@ from telegram.constants import ParseMode
 from telegram.error import BadRequest
 
 # =================================================================================
-# 0. التثبيت التلقائي للمكتبات (Automatic Dependency Installation)
-# =================================================================================
-def setup_dependencies():
-    """Checks for required libraries and installs them automatically."""
-    if not os.path.exists('requirements.txt'):
-        print("requirements.txt not found, creating it...")
-        with open('requirements.txt', 'w') as f:
-            f.write("python-telegram-bot\n")
-    print("Checking and installing required libraries...")
-    try:
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'])
-        print("✅ All libraries are installed successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error during library installation: {e}")
-        sys.exit(1)
-
-setup_dependencies()
-
-# =================================================================================
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -191,6 +172,7 @@ def get_setting(key):
 def set_setting(key, value):
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("UPDATE settings SET value = ? WHERE key = ?", (value, key))
+        conn.commit()
 
 def is_feature_enabled(key):
     return get_setting(key) == 'enabled'
@@ -224,6 +206,7 @@ def set_user_language(user_id, lang_code):
     get_or_create_user(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("UPDATE users SET language_code = ? WHERE telegram_user_id = ?", (lang_code, user_id))
+        conn.commit()
 
 def get_text(key, lang_code='en'):
     return TEXTS.get(lang_code, TEXTS['en']).get(key, TEXTS['en'].get(key, key))
@@ -231,7 +214,8 @@ def get_text(key, lang_code='en'):
 def add_user_creation(telegram_user_id, ssh_username):
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, created_at) VALUES (?, ?, ?)",
-                     (telegram_user_id, ssh_username, datetime.now()))
+                       (telegram_user_id, ssh_username, datetime.now()))
+        conn.commit()
 
 def count_recent_creations(telegram_user_id):
     with sqlite3.connect(DB_FILE) as conn:
@@ -358,6 +342,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_feature_enabled('points_system'):
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
+                conn.commit()
 
         await update.message.reply_text(
             get_text('creation_success', lang_code).format(details=result, days=ACCOUNT_EXPIRY_DAYS),
@@ -433,12 +418,14 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         today = date.today()
-        last_claim = cursor.execute("SELECT last_daily_claim FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-        if last_claim == str(today):
+        last_claim_str = cursor.execute("SELECT last_daily_claim FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+        
+        if last_claim_str and date.fromisoformat(last_claim_str) == today:
             await update.message.reply_text(get_text('daily_bonus_already_claimed', lang_code))
             return
 
-        cursor.execute("UPDATE users SET points = points + ?, last_daily_claim = ? WHERE telegram_user_id = ?", (DAILY_LOGIN_BONUS, today, user_id))
+        cursor.execute("UPDATE users SET points = points + ?, last_daily_claim = ? WHERE telegram_user_id = ?", (DAILY_LOGIN_BONUS, today.isoformat(), user_id))
+        conn.commit()
         new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
         await update.message.reply_text(get_text('daily_bonus_claimed', lang_code).format(bonus=DAILY_LOGIN_BONUS, new_balance=new_balance))
 
@@ -472,6 +459,7 @@ async def process_redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE
         cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
         cursor.execute("UPDATE redeem_codes SET current_uses = current_uses + 1 WHERE code = ?", (code,))
         cursor.execute("INSERT INTO redeemed_users (code, telegram_user_id) VALUES (?, ?)", (code, user_id))
+        conn.commit()
         new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
         await update.message.reply_text(get_text('redeem_success', lang_code).format(points=points, new_balance=new_balance))
     return ConversationHandler.END
@@ -506,6 +494,7 @@ async def receive_code_uses(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         with sqlite3.connect(DB_FILE) as conn:
             conn.execute("INSERT OR REPLACE INTO redeem_codes (code, points, max_uses) VALUES (?, ?, ?)", (name, points, uses))
+            conn.commit()
 
         lang_code = get_user_language(update.effective_user.id)
         await update.message.reply_text(get_text('admin_code_created', lang_code).format(code=name, points=points, uses=uses))
@@ -556,7 +545,10 @@ async def toggle_setting_callback(update: Update, context: ContextTypes.DEFAULT_
         button_text = f"{name}: {status_icon}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=f"toggle_{key}")])
 
-    await query.edit_message_text(text=get_text('admin_settings_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+    try:
+        await query.edit_message_text(text=get_text('admin_settings_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+    except BadRequest: # Message is not modified
+        pass
 
 # =================================================================================
 # 6. نقطة انطلاق البوت (Main Entry Point)
@@ -601,4 +593,4 @@ def main():
     app.run_polling()
 
 if __name__ == '__main__':
-    main()
+    mai
