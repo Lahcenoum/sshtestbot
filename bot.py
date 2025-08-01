@@ -22,11 +22,11 @@ SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 DB_FILE = 'ssh_bot_users.db'
 
 # --- قيم نظام النقاط (تم التحديث) ---
-COST_PER_ACCOUNT = 4      # تكلفة إنشاء حساب
-REFERRAL_BONUS = 4        # مكافأة دعوة صديق
-DAILY_LOGIN_BONUS = 1     # المكافأة اليومية
-INITIAL_POINTS = 2        # النقاط الأولية عند بدء البوت
-JOIN_BONUS = 4            # مكافأة الانضمام للقناة والمجموعة
+COST_PER_ACCOUNT = 4
+REFERRAL_BONUS = 4
+DAILY_LOGIN_BONUS = 1
+INITIAL_POINTS = 2
+JOIN_BONUS = 4
 ACCOUNT_EXPIRY_DAYS = 2
 
 # Channel and Group links and IDs
