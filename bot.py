@@ -13,7 +13,7 @@ from telegram.error import BadRequest
 # =================================================================================
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
-BOT_TOKEN = os.environ.get('BOT_TOKEN')
+BOT_TOKEN = 'BOT_TOKEN'
 ADMIN_USER_ID = 5344028088 # ⚠️ استبدل هذا بمعرف المستخدم الخاص بك
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
@@ -21,7 +21,7 @@ DB_FILE = 'ssh_bot_users.db'
 
 # --- قيم نظام النقاط (تم التحديث) ---
 COST_PER_ACCOUNT = 4      # تكلفة إنشاء حساب
-REFERRAL_BONUS = 3          # مكافأة دعوة صديق
+REFERRAL_BONUS = 4          # مكافأة دعوة صديق
 DAILY_LOGIN_BONUS = 1       # المكافأة اليومية
 INITIAL_POINTS = 2          # النقاط الأولية عند بدء البوت
 JOIN_BONUS = 4              # مكافأة الانضمام للقناة والمجموعة
@@ -88,6 +88,8 @@ TEXTS = {
         "admin_feature_points": "نظام النقاط",
         "admin_feature_force_join": "الانضمام الإجباري",
         "admin_feature_redeem": "أكواد المكافآت",
+        "admin_create_code_button": "➕ إنشاء كود جديد",
+        "admin_create_code_instruction": "ℹ️ لإنشاء كود جديد، استخدم الأمر /create_code",
         "status_enabled": "🟢 مفعل",
         "status_disabled": "🔴 معطل"
     },
@@ -134,6 +136,8 @@ TEXTS = {
         "admin_feature_points": "Points System",
         "admin_feature_force_join": "Force Join",
         "admin_feature_redeem": "Redeem Codes",
+        "admin_create_code_button": "➕ Create New Code",
+        "admin_create_code_instruction": "ℹ️ To create a new code, use the /create_code command.",
         "status_enabled": "🟢 Enabled",
         "status_disabled": "🔴 Disabled"
     },
@@ -171,7 +175,6 @@ def init_db():
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY, value TEXT
             )''')
-        # تفعيل نظام النقاط والانضمام الإجباري بشكل افتراضي
         default_settings = {'points_system': 'enabled', 'force_join': 'enabled', 'redeem_codes': 'enabled'}
         for key, value in default_settings.items():
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
@@ -270,6 +273,7 @@ def is_admin(user_id):
 # =================================================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback=False):
     user = update.effective_user
+    message_entity = update.message if not from_callback else update.callback_query.message
 
     referred_by = None
     if context.args:
@@ -282,16 +286,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
 
     get_or_create_user(user.id, referred_by)
     lang_code = get_user_language(user.id)
+    
+    is_member = await check_membership(user.id, context)
 
-    if is_feature_enabled('force_join') and not await check_membership(user.id, context):
-        keyboard = [
-            [InlineKeyboardButton(get_text('force_join_channel_button', lang_code), url=CHANNEL_LINK)],
-            [InlineKeyboardButton(get_text('force_join_group_button', lang_code), url=GROUP_LINK)],
-            [InlineKeyboardButton(get_text('force_join_verify_button', lang_code), callback_data='verify_join')],
-        ]
-        message_entity = update.message if not from_callback else update.callback_query.message
-        await message_entity.reply_text(get_text('force_join_prompt', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
-        return
+    if is_feature_enabled('force_join'):
+        if not is_member:
+            keyboard = [
+                [InlineKeyboardButton(get_text('force_join_channel_button', lang_code), url=CHANNEL_LINK)],
+                [InlineKeyboardButton(get_text('force_join_group_button', lang_code), url=GROUP_LINK)],
+                [InlineKeyboardButton(get_text('force_join_verify_button', lang_code), callback_data='verify_join')],
+            ]
+            await message_entity.reply_text(get_text('force_join_prompt', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+        else:
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                claimed = cursor.execute("SELECT join_bonus_claimed FROM users WHERE telegram_user_id = ?", (user.id,)).fetchone()
+                if claimed and claimed[0] == 0:
+                    cursor.execute("UPDATE users SET points = points + ?, join_bonus_claimed = 1 WHERE telegram_user_id = ?", (JOIN_BONUS, user.id))
+                    conn.commit()
+                    await message_entity.reply_text(get_text('join_bonus_awarded', lang_code).format(bonus=JOIN_BONUS))
 
     keyboard_layout = [[KeyboardButton(get_text('get_ssh_button', lang_code))]]
     row2 = [KeyboardButton(get_text('my_account_button', lang_code))]
@@ -305,7 +319,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
         keyboard_layout.append(row2)
 
     reply_markup = ReplyKeyboardMarkup(keyboard_layout, resize_keyboard=True)
-    message_entity = update.message if not from_callback else update.callback_query.message
     await message_entity.reply_text(get_text('welcome', lang_code), reply_markup=reply_markup)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -351,12 +364,14 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"Attempting to run command: {' '.join(command_to_run)}")
 
     try:
-        result = subprocess.check_output(
+        process = subprocess.run(
             command_to_run,
-            stderr=subprocess.STDOUT, 
+            capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
+            check=True
         )
+        result = process.stdout
         print(f"Script executed successfully. Output:\n{result}")
 
         add_user_creation(user_id, username)
@@ -374,7 +389,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"❌ Script timed out after 30 seconds.")
         await update.message.reply_text(get_text('creation_timeout', lang_code))
     except subprocess.CalledProcessError as e:
-        error_output = e.output if e.output else "No output from script."
+        error_output = e.stdout if e.stdout else e.stderr
         print(f"❌ Script failed with exit code {e.returncode}. Output:\n{error_output}")
         await update.message.reply_text(get_text('creation_error', lang_code))
     except Exception as e:
@@ -393,7 +408,7 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = [get_text('your_accounts', lang_code)]
     for username in accounts:
         try:
-            expiry = subprocess.check_output(['chage', '-l', username], text=True).split('\n')[3].split(':')[1].strip()
+            expiry = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True).split('\n')[3].split(':')[1].strip()
             safe_username = username.replace('_', '\\_')
             safe_expiry = expiry.replace('-', '\\-')
             response.append(get_text('account_details', lang_code).format(username=safe_username, expiry=safe_expiry))
@@ -562,6 +577,9 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         button_text = f"{name}: {status_icon}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=f"toggle_{key}")])
 
+    # --- تمت إضافة زر إنشاء الكود هنا ---
+    keyboard.append([InlineKeyboardButton(get_text('admin_create_code_button', lang_code), callback_data="admin_instruct_create_code")])
+    
     await update.message.reply_text(get_text('admin_settings_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def toggle_setting_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -587,11 +605,22 @@ async def toggle_setting_callback(update: Update, context: ContextTypes.DEFAULT_
         status_icon = get_text('status_enabled', lang_code) if is_feature_enabled(key) else get_text('status_disabled', lang_code)
         button_text = f"{name}: {status_icon}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=f"toggle_{key}")])
+    
+    keyboard.append([InlineKeyboardButton(get_text('admin_create_code_button', lang_code), callback_data="admin_instruct_create_code")])
 
     try:
         await query.edit_message_text(text=get_text('admin_settings_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
     except BadRequest: # Message is not modified
         pass
+
+# --- تمت إضافة دالة جديدة لزر إنشاء الكود ---
+async def admin_instruct_create_code_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query.from_user.id != ADMIN_USER_ID:
+        await query.answer()
+        return
+    lang_code = get_user_language(query.from_user.id)
+    await query.answer(get_text('admin_create_code_instruction', lang_code), show_alert=True)
 
 # =================================================================================
 # 6. نقطة انطلاق البوت (Main Entry Point)
@@ -623,6 +652,8 @@ def main():
     app.add_handler(CommandHandler("settings", settings_command))
     app.add_handler(create_code_handler)
     app.add_handler(CallbackQueryHandler(toggle_setting_callback, pattern='^toggle_'))
+    # --- تمت إضافة معالج جديد لزر إنشاء الكود ---
+    app.add_handler(CallbackQueryHandler(admin_instruct_create_code_callback, pattern='^admin_instruct_create_code$'))
 
     # User Handlers
     app.add_handler(CommandHandler("start", start))
