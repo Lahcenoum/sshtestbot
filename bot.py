@@ -68,6 +68,8 @@ TEXTS = {
         "no_channels_available": "ℹ️ لا توجد قنوات متاحة للمكافآت حاليًا.",
         "admin_panel_header": "⚙️ لوحة تحكم الأدمن",
         "admin_manage_channels_button": " إدارة قنوات المكافآت",
+        "admin_manage_codes_button": " إدارة أكواد الهدايا", # <-- نص جديد
+        "admin_create_code_button": "➕ إنشاء كود جديد", # <-- نص جديد
         "admin_user_count_button": "👤 عدد المستخدمين",
         "admin_user_count_info": "📊 العدد الإجمالي للمستخدمين: {count}",
         "admin_add_channel_button": "➕ إضافة قناة",
@@ -112,6 +114,10 @@ TEXTS = {
         "daily_bonus_claimed": "🎉 لقد حصلت على مكافأتك اليومية: **{bonus}** نقطة! رصيدك الآن هو **{new_balance}**.",
         "daily_bonus_already_claimed": "ℹ️ لقد حصلت بالفعل على مكافأتك اليومية. تعال غدًا!",
         "creation_error": "❌ حدث خطأ أثناء إنشاء الحساب. يرجى التواصل مع الأدمن.",
+        "admin_code_created": "✅ تم إنشاء الكود `{code}` بنجاح. يمنح **{points}** نقطة ومتاح لـ **{uses}** مستخدمين.",
+        "admin_create_code_prompt_name": "أرسل اسم الكود الجديد (مثال: WELCOME2025):",
+        "admin_create_code_prompt_points": "الآن أرسل عدد النقاط التي يمنحها هذا الكود:",
+        "admin_create_code_prompt_uses": "أخيراً، أرسل عدد المستخدمين الذين يمكنهم استخدام هذا الكود:",
     },
     'en': {
         # Full English translations can be added here
@@ -239,7 +245,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     lang_code = get_user_language(user_id)
     
-    # This is a robust way to handle buttons in multiple languages
     button_map = {
         'get_ssh_button': get_ssh,
         'my_account_button': my_account,
@@ -252,7 +257,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     for key, func in button_map.items():
-        if text in [get_text(key, lang) for lang in TEXTS.keys()]:
+        # Check against all languages
+        if text in [get_text(key, lang) for lang in TEXTS.keys() if lang in TEXTS]:
             await func(update, context)
             return
 
@@ -352,9 +358,16 @@ async def admin_panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     lang_code = get_user_language(update.effective_user.id)
     keyboard = [
         [InlineKeyboardButton(get_text('admin_manage_channels_button', lang_code), callback_data='admin_manage_channels')],
+        [InlineKeyboardButton(get_text('admin_manage_codes_button', lang_code), callback_data='admin_manage_codes')],
         [InlineKeyboardButton(get_text('admin_user_count_button', lang_code), callback_data='admin_user_count')]
     ]
-    await update.message.reply_text(get_text('admin_panel_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    # Check if coming from a query or a command
+    if update.callback_query:
+        await update.callback_query.edit_message_text(get_text('admin_panel_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_text(get_text('admin_panel_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+
 
 async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -378,9 +391,17 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             [InlineKeyboardButton(get_text('admin_return_button', lang_code), callback_data='admin_panel_main')]
         ]
         await query.edit_message_text("إدارة قنوات المكافآت:", reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    elif data == 'admin_manage_codes':
+        keyboard = [
+            [InlineKeyboardButton(get_text('admin_create_code_button', lang_code), callback_data='admin_create_code_start')],
+            [InlineKeyboardButton(get_text('admin_return_button', lang_code), callback_data='admin_panel_main')]
+        ]
+        await query.edit_message_text("إدارة أكواد الهدايا:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data == 'admin_panel_main':
-        await admin_panel_command(query, context) # Re-show main admin panel
+        await admin_panel_command(query, context)
+
 
 # --- Add/Remove Channel Logic ---
 async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -443,7 +464,8 @@ async def remove_channel_confirm(update: Update, context: ContextTypes.DEFAULT_T
     await query.edit_message_text(get_text('admin_channel_removed_success', 'ar'))
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(get_text('operation_cancelled', 'ar'))
+    lang_code = get_user_language(update.effective_user.id)
+    await update.message.reply_text(get_text('operation_cancelled', lang_code))
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -466,7 +488,10 @@ async def rewards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([button])
         if cid not in claimed_ids:
              keyboard.append([InlineKeyboardButton(get_text('verify_join_button', lang_code), callback_data=f"verify_r_{cid}")])
-    await update.message.reply_text(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    reply_func = update.callback_query.edit_message_text if update.callback_query else update.message.reply_text
+    await reply_func(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+
 
 async def verify_reward_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -492,21 +517,104 @@ async def verify_reward_callback(update: Update, context: ContextTypes.DEFAULT_T
         cursor.execute("INSERT INTO user_channel_rewards (telegram_user_id, channel_id) VALUES (?, ?)", (user_id, channel_id))
         conn.commit()
     await query.answer(get_text('reward_success', lang_code).format(points=points), show_alert=True)
-    await rewards_command(query, context) # Refresh the message
+    await rewards_command(query, context)
 
 # --- Redeem Code Conversation ---
 async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_feature_enabled('redeem_codes'): return
     await update.message.reply_text(get_text('redeem_prompt', get_user_language(update.effective_user.id)))
     return REDEEM_CODE
 
 async def process_redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Full logic for redeeming a code
-    pass
+    user_id = update.effective_user.id
+    lang_code = get_user_language(user_id)
+    code = update.message.text
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        code_data = cursor.execute("SELECT points, max_uses, current_uses FROM redeem_codes WHERE code = ?", (code,)).fetchone()
+        if not code_data:
+            await update.message.reply_text(get_text('redeem_invalid_code', lang_code))
+            return ConversationHandler.END
+        points, max_uses, current_uses = code_data
+        if current_uses >= max_uses:
+            await update.message.reply_text(get_text('redeem_limit_reached', lang_code))
+            return ConversationHandler.END
+        if cursor.execute("SELECT 1 FROM redeemed_users WHERE code = ? AND telegram_user_id = ?", (code, user_id)).fetchone():
+            await update.message.reply_text(get_text('redeem_already_used', lang_code))
+            return ConversationHandler.END
+        cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
+        cursor.execute("UPDATE redeem_codes SET current_uses = current_uses + 1 WHERE code = ?", (code,))
+        cursor.execute("INSERT INTO redeemed_users (code, telegram_user_id) VALUES (?, ?)", (code, user_id))
+        conn.commit()
+        new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+        await update.message.reply_text(get_text('redeem_success', lang_code).format(points=points, new_balance=new_balance))
+    return ConversationHandler.END
+
+# --- Create Code Conversation (Admin) ---
+async def create_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang_code = get_user_language(query.from_user.id)
+    await query.message.reply_text(get_text('admin_create_code_prompt_name', lang_code))
+    return CREATE_CODE_NAME
+
+async def receive_code_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['code_name'] = update.message.text
+    lang_code = get_user_language(update.effective_user.id)
+    await update.message.reply_text(get_text('admin_create_code_prompt_points', lang_code))
+    return CREATE_CODE_POINTS
+
+async def receive_code_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        context.user_data['code_points'] = int(update.message.text)
+        lang_code = get_user_language(update.effective_user.id)
+        await update.message.reply_text(get_text('admin_create_code_prompt_uses', lang_code))
+        return CREATE_CODE_USES
+    except ValueError:
+        lang_code = get_user_language(update.effective_user.id)
+        await update.message.reply_text(get_text('invalid_input', lang_code))
+        return CREATE_CODE_POINTS
+
+async def receive_code_uses(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        uses = int(update.message.text)
+        name = context.user_data['code_name']
+        points = context.user_data['code_points']
+        lang_code = get_user_language(update.effective_user.id)
+
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.execute("INSERT OR REPLACE INTO redeem_codes (code, points, max_uses) VALUES (?, ?, ?)", (name, points, uses))
+            conn.commit()
+
+        await update.message.reply_text(get_text('admin_code_created', lang_code).format(code=name, points=points, uses=uses))
+        context.user_data.clear()
+        return ConversationHandler.END
+    except ValueError:
+        lang_code = get_user_language(update.effective_user.id)
+        await update.message.reply_text(get_text('invalid_input', lang_code))
+        return CREATE_CODE_USES
 
 # --- Settings Command ---
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Full logic for the settings panel
-    pass
+    if update.effective_user.id != ADMIN_USER_ID: return
+    lang_code = get_user_language(update.effective_user.id)
+    features = {'points_system': 'نظام النقاط', 'force_join': 'الانضمام الإجباري', 'redeem_codes': 'أكواد المكافآت'}
+    keyboard = []
+    for key, name in features.items():
+        status = "🟢" if is_feature_enabled(key) else "🔴"
+        keyboard.append([InlineKeyboardButton(f"{name}: {status}", callback_data=f"toggle_{key}")])
+    
+    reply_func = update.callback_query.edit_message_text if update.callback_query else update.message.reply_text
+    await reply_func("⚙️ لوحة تحكم إعدادات البوت", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def toggle_setting_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.from_user.id != ADMIN_USER_ID: return
+    key = query.data.split('_')[1]
+    new_status = 'disabled' if is_feature_enabled(key) else 'enabled'
+    set_setting(key, new_status)
+    await settings_command(query, context) # Refresh
 
 # --- Language Command ---
 async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -536,16 +644,11 @@ async def verify_join_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 cursor.execute("UPDATE users SET points = points + ?, join_bonus_claimed = 1 WHERE telegram_user_id = ?", (JOIN_BONUS, user_id))
                 conn.commit()
                 await query.answer(get_text('join_bonus_awarded', lang_code).format(bonus=JOIN_BONUS), show_alert=True)
-        
         await query.answer(get_text('force_join_success', lang_code))
         await query.delete_message()
         await start(update, context, from_callback=True)
     else:
         await query.answer(get_text('force_join_fail', lang_code), show_alert=True)
-
-async def toggle_setting_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Full logic for toggling settings
-    pass
 
 # =================================================================================
 # 6. نقطة انطلاق البوت (Main Entry Point)
@@ -574,6 +677,16 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel_conversation)]
     )
 
+    create_code_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(create_code_start, pattern='^admin_create_code_start$')],
+        states={
+            CREATE_CODE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_code_name)],
+            CREATE_CODE_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_code_points)],
+            CREATE_CODE_USES: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_code_uses)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+    )
+
     # Add all handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_panel_command))
@@ -582,6 +695,7 @@ def main():
     
     app.add_handler(add_channel_conv)
     app.add_handler(redeem_conv)
+    app.add_handler(create_code_conv)
 
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern='^admin_'))
     app.add_handler(CallbackQueryHandler(remove_channel_start, pattern='^admin_remove_channel_start$'))
@@ -590,6 +704,7 @@ def main():
     app.add_handler(CallbackQueryHandler(verify_join_callback, pattern='^verify_join$'))
     app.add_handler(CallbackQueryHandler(set_language_callback, pattern='^set_lang_'))
     app.add_handler(CallbackQueryHandler(toggle_setting_callback, pattern='^toggle_'))
+    app.add_handler(CallbackQueryHandler(lambda u,c: u.callback_query.answer(), pattern='^dummy$'))
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
