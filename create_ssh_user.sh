@@ -68,6 +68,7 @@ echo "Username: $USERNAME"
 echo "Password: $PASSWORD"
 echo "SSH Port: 22"
 echo "WebSocket Ports: 80, 8080, 8880"
+echo "maxlogins 2"
 echo "Expires on: $EXPIRY_DATE"
 
 exit 0
