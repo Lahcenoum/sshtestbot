@@ -4,7 +4,7 @@ import os
 import random
 import string
 import sqlite3
-import re # <-- تمت الإضافة
+import re
 from datetime import datetime, date, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
@@ -15,7 +15,7 @@ from telegram.error import BadRequest
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
 # سيتم استبدال هذا التوكن تلقائياً بواسطة سكربت التثبيت
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN" 
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 ADMIN_USER_ID = 5344028088 # ⚠️ استبدل هذا بمعرف المستخدم الخاص بك
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
@@ -254,7 +254,6 @@ def get_user_accounts(telegram_user_id):
 # =================================================================================
 # 4. دوال مساعدة (Helper Functions)
 # =================================================================================
-# ✨ تمت إضافة هذه الدالة لإصلاح مشكلة الرموز الخاصة
 def escape_markdown_v2(text: str) -> str:
     """Escapes special characters for Telegram's MarkdownV2 parse mode."""
     escape_chars = r'\_*[]()~`>#+-=|{}.!'
@@ -270,9 +269,6 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
                 group_member.status in ['member', 'administrator', 'creator'])
     except Exception:
         return False
-
-def generate_username():
-    return "user" + ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
 
 def generate_password():
     return "sshdotbot-" + ''.join(random.choices(string.ascii_letters + string.digits, k=4))
@@ -369,7 +365,9 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     await update.message.reply_text(get_text('processing_request', lang_code))
-    username = generate_username()
+    
+    # ✨ تم التعديل هنا لإنشاء اسم مستخدم فريد
+    username = f"user{user_id}"
     password = generate_password()
 
     command_to_run = [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
@@ -392,7 +390,6 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
                 conn.commit()
 
-        # ✨ تم تطبيق الدالة هنا لضمان عدم حدوث أخطاء
         escaped_details = escape_markdown_v2(result)
         
         await update.message.reply_text(
@@ -408,7 +405,6 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_text('creation_error', lang_code))
     except Exception as e:
         print(f"❌ An unexpected error occurred: {e}")
-        # ✨ تم إضافة معالجة خطأ التحليل هنا كإجراء احترازي
         if isinstance(e, BadRequest) and "Can't parse entities" in str(e):
             print("Fallback: Sending message without markdown due to parsing error.")
             await update.message.reply_text(
@@ -430,13 +426,12 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for username in accounts:
         try:
             expiry_output = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True)
-            # Find the line with "Account expires"
             for line in expiry_output.split('\n'):
                 if "Account expires" in line:
                     expiry = line.split(':', 1)[1].strip()
                     break
             else:
-                expiry = "Never" # Fallback if not found
+                expiry = "Never"
 
             safe_username = escape_markdown_v2(username)
             safe_expiry = escape_markdown_v2(expiry)
