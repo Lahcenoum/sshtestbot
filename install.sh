@@ -27,12 +27,12 @@ echo "      بدء عملية تثبيت وإعداد بوت SSH من GitHub"
 echo "=================================================="
 
 # الخطوة 1: تحديث النظام وتثبيت المتطلبات الأساسية
-echo -e "\n[1/8] تحديث النظام وتثبيت المتطلبات (git, python3-full, python3-venv)..."
+echo -e "\n[1/9] تحديث النظام وتثبيت المتطلبات (git, python3-full, python3-venv)..."
 apt-get update
 apt-get install -y git python3-full python3-venv sqlite3
 
 # الخطوة 2: استنساخ المشروع من GitHub
-echo -e "\n[2/8] استنساخ المشروع من GitHub إلى '$PROJECT_DIR'..."
+echo -e "\n[2/9] استنساخ المشروع من GitHub إلى '$PROJECT_DIR'..."
 rm -rf "$PROJECT_DIR"
 git clone "$GIT_REPO_URL" "$PROJECT_DIR"
 
@@ -46,17 +46,17 @@ fi
 cd "$PROJECT_DIR" || exit
 
 # الخطوة 3: تنظيم الملفات ونقل السكربتات
-echo -e "\n[3/8] تنظيم الملفات ونقل السكربتات إلى المسار الصحيح..."
+echo -e "\n[3/9] تنظيم الملفات ونقل السكربتات إلى المسار الصحيح..."
 if [ -f "create_ssh_user.sh" ]; then mv create_ssh_user.sh /usr/local/bin/; fi
 if [ -f "monitor_ssh.sh" ]; then mv monitor_ssh.sh /usr/local/bin/; fi
 if [ -f "delete_expired_users.sh" ]; then mv delete_expired_users.sh /usr/local/bin/; fi
 
 # الخطوة 4: إنشاء بيئة بايثون الافتراضية
-echo -e "\n[4/8] إنشاء بيئة بايثون الافتراضية (venv)..."
+echo -e "\n[4/9] إنشاء بيئة بايثون الافتراضية (venv)..."
 python3 -m venv venv
 
 # الخطوة 5: تثبيت مكتبات بايثون داخل البيئة الافتراضية
-echo -e "\n[5/8] تثبيت مكتبات بايثون المطلوبة..."
+echo -e "\n[5/9] تثبيت مكتبات بايثون المطلوبة..."
 if [ -f "requirements.txt" ]; then
     source venv/bin/activate
     pip install -r requirements.txt
@@ -67,20 +67,40 @@ else
     exit 1
 fi
 
-# الخطوة 6: إعطاء صلاحيات التنفيذ للسكربتات
-echo -e "\n[6/8] إعطاء صلاحيات التنفيذ للسكربتات..."
+# الخطوة 6: إعداد توكن البوت
+echo -e "\n[6/9] إعداد توكن بوت تليجرام..."
+echo "الرجاء إدخال توكن البوت الذي حصلت عليه من BotFather."
+read -p "Enter Bot Token: " BOT_TOKEN
+
+if [ -z "$BOT_TOKEN" ]; then
+    echo "❌ خطأ: لم يتم إدخال التوكن. التثبيت سيتوقف."
+    exit 1
+fi
+
+# استبدال التوكن في ملف bot.py
+# نفترض أن الملف يحتوي على سطر مثل: TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+# سيقوم السكربت بالبحث عن هذا السطر واستبداله بالتوكن الذي أدخلته
+if grep -q 'TOKEN = ".*"' "$PROJECT_DIR/bot.py"; then
+    sed -i 's/TOKEN = ".*"/TOKEN = "'"$BOT_TOKEN"'"/' "$PROJECT_DIR/bot.py"
+    echo "-> تم حفظ التوكن بنجاح في ملف bot.py."
+else
+    echo "⚠️ تحذير: لم يتم العثور على السطر الخاص بالتوكن (TOKEN = \"...\") في ملف bot.py. يرجى إضافته يدويًا."
+fi
+
+
+# الخطوة 7: إعطاء صلاحيات التنفيذ للسكربتات
+echo -e "\n[7/9] إعطاء صلاحيات التنفيذ للسكربتات..."
 chmod +x /usr/local/bin/create_ssh_user.sh
 chmod +x /usr/local/bin/monitor_ssh.sh
 chmod +x /usr/local/bin/delete_expired_users.sh
 
-# الخطوة 7: إعداد المهام المجدولة (Cron Jobs)
-echo -e "\n[7/8] إعداد المهام المجدولة..."
+# الخطوة 8: إعداد المهام المجدولة (Cron Jobs)
+echo -e "\n[8/9] إعداد المهام المجدولة..."
 (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/monitor_ssh.sh" ; echo "*/5 * * * * /usr/local/bin/monitor_ssh.sh") | crontab -
 (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/delete_expired_users.sh" ; echo "0 0 * * * /usr/local/bin/delete_expired_users.sh") | crontab -
 
-# الخطوة 8: إعداد البوت كخدمة دائمة (systemd)
-echo -e "\n[8/8] إعداد البوت كخدمة دائمة (systemd)..."
-# ⚠️ تم تحديث مسار ExecStart ليشير إلى بايثون داخل البيئة الافتراضية
+# الخطوة 9: إعداد البوت كخدمة دائمة (systemd)
+echo -e "\n[9/9] إعداد البوت كخدمة دائمة (systemd)..."
 cat > /etc/systemd/system/ssh_bot.service << EOL
 [Unit]
 Description=Telegram SSH Bot Service
@@ -109,7 +129,8 @@ echo "✅ اكتمل التثبيت بنجاح!"
 echo "   البوت يعمل الآن كخدمة دائمة في الخلفية."
 echo "=================================================="
 echo -e "\n**ملاحظات هامة:**\n"
-echo "1. **إضافة التوكن:** إذا لم تكن تستخدم متغيرات البيئة، تأكد من تعديل ملف 'bot.py' وإضافة التوكن ومعرف المدير."
+echo "1. **معرف المدير (Admin ID):** تم حفظ توكن البوت تلقائيًا. إذا كان البوت يتطلب معرف مدير،"
+echo "   لا تنسَ تعديل ملف 'bot.py' وإضافة معرف المستخدم الخاص بك."
 echo "   - استخدم الأمر: nano ${PROJECT_DIR}/bot.py"
 echo ""
 echo "2. **لمراقبة حالة البوت أو رؤية الأخطاء:**"
