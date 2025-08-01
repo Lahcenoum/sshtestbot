@@ -4,6 +4,7 @@ import os
 import random
 import string
 import sqlite3
+import re # <-- تمت الإضافة
 from datetime import datetime, date, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
@@ -13,7 +14,8 @@ from telegram.error import BadRequest
 # =================================================================================
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
-BOT_TOKEN = 'BOT_TOKEN'
+# سيتم استبدال هذا التوكن تلقائياً بواسطة سكربت التثبيت
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN" 
 ADMIN_USER_ID = 5344028088 # ⚠️ استبدل هذا بمعرف المستخدم الخاص بك
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
@@ -21,10 +23,10 @@ DB_FILE = 'ssh_bot_users.db'
 
 # --- قيم نظام النقاط (تم التحديث) ---
 COST_PER_ACCOUNT = 4      # تكلفة إنشاء حساب
-REFERRAL_BONUS = 4          # مكافأة دعوة صديق
-DAILY_LOGIN_BONUS = 1       # المكافأة اليومية
-INITIAL_POINTS = 2          # النقاط الأولية عند بدء البوت
-JOIN_BONUS = 4              # مكافأة الانضمام للقناة والمجموعة
+REFERRAL_BONUS = 4        # مكافأة دعوة صديق
+DAILY_LOGIN_BONUS = 1     # المكافأة اليومية
+INITIAL_POINTS = 2        # النقاط الأولية عند بدء البوت
+JOIN_BONUS = 4            # مكافأة الانضمام للقناة والمجموعة
 ACCOUNT_EXPIRY_DAYS = 2
 
 # Channel and Group links and IDs
@@ -33,9 +35,11 @@ REQUIRED_GROUP_ID = -1002218671728
 CHANNEL_LINK = "https://t.me/FASTVPSVIP"
 GROUP_LINK = "https://t.me/dgtliA"
 
-if not BOT_TOKEN:
-    print("Fatal Error: BOT_TOKEN environment variable not set.")
-    exit()
+# ✨ تم تحسين التحقق من التوكن
+if TOKEN == "YOUR_TELEGRAM_BOT_TOKEN" or not TOKEN:
+    print("Fatal Error: Bot token is not set correctly in bot.py.")
+    print("Please add your bot token manually or re-run the installation script.")
+    sys.exit(1)
 
 # Conversation handler states
 REDEEM_CODE = range(1)
@@ -210,7 +214,9 @@ def get_or_create_user(user_id, referred_by=None):
                 (user_id, initial_pts, ref_code, referred_by)
             )
             conn.commit()
-            return get_or_create_user(user_id)
+            # Re-fetch the newly created user to ensure consistent return type
+            cursor.execute("SELECT * FROM users WHERE telegram_user_id = ?", (user_id,))
+            user_data = cursor.fetchone()
         return user_data
 
 def get_user_language(user_id):
@@ -230,14 +236,14 @@ def get_text(key, lang_code='en'):
 def add_user_creation(telegram_user_id, ssh_username):
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, created_at) VALUES (?, ?, ?)",
-                       (telegram_user_id, ssh_username, datetime.now()))
+                         (telegram_user_id, ssh_username, datetime.now()))
         conn.commit()
 
 def count_recent_creations(telegram_user_id):
     with sqlite3.connect(DB_FILE) as conn:
         twenty_four_hours_ago = datetime.now() - timedelta(hours=24)
         result = conn.execute("SELECT COUNT(*) FROM ssh_accounts WHERE telegram_user_id = ? AND created_at > ?",
-                              (telegram_user_id, twenty_four_hours_ago)).fetchone()
+                                (telegram_user_id, twenty_four_hours_ago)).fetchone()
         return result[0]
 
 def get_user_accounts(telegram_user_id):
@@ -248,6 +254,12 @@ def get_user_accounts(telegram_user_id):
 # =================================================================================
 # 4. دوال مساعدة (Helper Functions)
 # =================================================================================
+# ✨ تمت إضافة هذه الدالة لإصلاح مشكلة الرموز الخاصة
+def escape_markdown_v2(text: str) -> str:
+    """Escapes special characters for Telegram's MarkdownV2 parse mode."""
+    escape_chars = r'\_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if not is_feature_enabled('force_join'):
         return True
@@ -380,9 +392,11 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
                 conn.commit()
 
-        sanitized_result = result.replace('.', '\\.').replace('-', '\\-')
+        # ✨ تم تطبيق الدالة هنا لضمان عدم حدوث أخطاء
+        escaped_details = escape_markdown_v2(result)
+        
         await update.message.reply_text(
-            get_text('creation_success', lang_code).format(details=sanitized_result, days=ACCOUNT_EXPIRY_DAYS),
+            get_text('creation_success', lang_code).format(details=escaped_details, days=ACCOUNT_EXPIRY_DAYS),
             parse_mode=ParseMode.MARKDOWN_V2
         )
     except subprocess.TimeoutExpired:
@@ -394,7 +408,14 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_text('creation_error', lang_code))
     except Exception as e:
         print(f"❌ An unexpected error occurred: {e}")
-        await update.message.reply_text(get_text('creation_error', lang_code))
+        # ✨ تم إضافة معالجة خطأ التحليل هنا كإجراء احترازي
+        if isinstance(e, BadRequest) and "Can't parse entities" in str(e):
+            print("Fallback: Sending message without markdown due to parsing error.")
+            await update.message.reply_text(
+                get_text('creation_success', lang_code).format(details=result, days=ACCOUNT_EXPIRY_DAYS)
+            )
+        else:
+            await update.message.reply_text(get_text('creation_error', lang_code))
 
 
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -408,9 +429,17 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = [get_text('your_accounts', lang_code)]
     for username in accounts:
         try:
-            expiry = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True).split('\n')[3].split(':')[1].strip()
-            safe_username = username.replace('_', '\\_')
-            safe_expiry = expiry.replace('-', '\\-')
+            expiry_output = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True)
+            # Find the line with "Account expires"
+            for line in expiry_output.split('\n'):
+                if "Account expires" in line:
+                    expiry = line.split(':', 1)[1].strip()
+                    break
+            else:
+                expiry = "Never" # Fallback if not found
+
+            safe_username = escape_markdown_v2(username)
+            safe_expiry = escape_markdown_v2(expiry)
             response.append(get_text('account_details', lang_code).format(username=safe_username, expiry=safe_expiry))
         except Exception as e:
             print(f"Could not get expiry for {username}: {e}")
@@ -577,7 +606,6 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         button_text = f"{name}: {status_icon}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=f"toggle_{key}")])
 
-    # --- تمت إضافة زر إنشاء الكود هنا ---
     keyboard.append([InlineKeyboardButton(get_text('admin_create_code_button', lang_code), callback_data="admin_instruct_create_code")])
     
     await update.message.reply_text(get_text('admin_settings_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
@@ -613,7 +641,6 @@ async def toggle_setting_callback(update: Update, context: ContextTypes.DEFAULT_
     except BadRequest: # Message is not modified
         pass
 
-# --- تمت إضافة دالة جديدة لزر إنشاء الكود ---
 async def admin_instruct_create_code_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query.from_user.id != ADMIN_USER_ID:
@@ -631,7 +658,7 @@ def main():
     init_db()
 
     print("Building bot application...")
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
     create_code_handler = ConversationHandler(
         entry_points=[CommandHandler("create_code", create_code_command)],
@@ -652,7 +679,6 @@ def main():
     app.add_handler(CommandHandler("settings", settings_command))
     app.add_handler(create_code_handler)
     app.add_handler(CallbackQueryHandler(toggle_setting_callback, pattern='^toggle_'))
-    # --- تمت إضافة معالج جديد لزر إنشاء الكود ---
     app.add_handler(CallbackQueryHandler(admin_instruct_create_code_callback, pattern='^admin_instruct_create_code$'))
 
     # User Handlers
