@@ -77,14 +77,15 @@ if [ -z "$BOT_TOKEN" ]; then
     exit 1
 fi
 
-# استبدال التوكن في ملف bot.py
-# نفترض أن الملف يحتوي على سطر مثل: TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-# سيقوم السكربت بالبحث عن هذا السطر واستبداله بالتوكن الذي أدخلته
-if grep -q 'TOKEN = ".*"' "$PROJECT_DIR/bot.py"; then
-    sed -i 's/TOKEN = ".*"/TOKEN = "'"$BOT_TOKEN"'"/' "$PROJECT_DIR/bot.py"
+# ✨ تم التعديل حسب طلبك ليتم استبدال الكلمة المحددة فقط
+PLACEHOLDER="YOUR_TELEGRAM_BOT_TOKEN"
+
+if grep -q "$PLACEHOLDER" "$PROJECT_DIR/bot.py"; then
+    # استبدال الكلمة المحددة 'YOUR_TELEGRAM_BOT_TOKEN' بالتوكن الذي أدخله المستخدم
+    sed -i "s/$PLACEHOLDER/$BOT_TOKEN/g" "$PROJECT_DIR/bot.py"
     echo "-> تم حفظ التوكن بنجاح في ملف bot.py."
 else
-    echo "⚠️ تحذير: لم يتم العثور على السطر الخاص بالتوكن (TOKEN = \"...\") في ملف bot.py. يرجى إضافته يدويًا."
+    echo "⚠️ تحذير: لم يتم العثور على الكلمة المحددة ($PLACEHOLDER) في ملف bot.py. قد تحتاج لإضافته يدويًا."
 fi
 
 
