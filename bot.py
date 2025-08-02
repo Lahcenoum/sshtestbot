@@ -188,7 +188,9 @@ def escape_markdown_v2(text: str) -> str:
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
 def generate_password():
-    return "sshdotbot-" + ''.join(random.choices(string.ascii_letters + string.digits, k=4))
+    """توليد كلمة سر آمنة مكونة من 12 حرفاً ورقماً فقط."""
+    safe_chars = string.ascii_lowercase + string.digits
+    return ''.join(random.choices(safe_chars, k=12))
 
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if not is_feature_enabled('force_join'): return True
@@ -264,7 +266,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    get_or_create_user(user_id) # ✨ FIX: Ensure user exists before checking points
+    get_or_create_user(user_id)
     lang_code = get_user_language(user_id)
     
     if is_feature_enabled('points_system'):
@@ -287,6 +289,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, created_at) VALUES (?, ?, ?)", (user_id, username, datetime.now()))
             conn.commit()
         
+        # Although the password is safe, escaping the whole output is a good practice
         escaped_details = escape_markdown_v2(result)
         await update.message.reply_text(
             get_text('creation_success', lang_code).format(details=escaped_details, days=ACCOUNT_EXPIRY_DAYS),
@@ -298,7 +301,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
+    get_or_create_user(user_id)
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         accounts = conn.execute("SELECT ssh_username FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
@@ -321,7 +324,7 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
+    get_or_create_user(user_id)
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
@@ -329,7 +332,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
+    get_or_create_user(user_id)
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         ref_code = conn.execute("SELECT referral_code FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
@@ -339,7 +342,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
+    get_or_create_user(user_id)
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -481,7 +484,7 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 # --- Rewards Logic ---
 async def rewards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
+    get_or_create_user(user_id)
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         all_channels = conn.execute("SELECT channel_id, channel_link, reward_points, channel_name FROM reward_channels").fetchall()
@@ -537,7 +540,7 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def process_redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
+    get_or_create_user(user_id)
     lang_code = get_user_language(user_id)
     code = update.message.text
     with sqlite3.connect(DB_FILE) as conn:
