@@ -186,6 +186,7 @@ def get_text(key, lang_code='ar'):
 # =================================================================================
 # 4. دوال مساعدة (Helper Functions)
 # =================================================================================
+# دوال مساعدة
 def escape_markdown_v2(text: str) -> str:
     escape_chars = r'\_*[]()~`>#+-=|{}.!'
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
@@ -201,6 +202,20 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
         return all(m.status in ['member', 'administrator', 'creator'] for m in [channel, group])
     except Exception:
         return False
+
+async def send_server_info(user_id: int, context: ContextTypes.DEFAULT_TYPE):
+    message = (
+        f"Host/IP: {escape_markdown_v2(SERVER_IP)}\n"
+        f"Hostname: {escape_markdown_v2('fastvpsvip.freehost000.xyz')}\n"
+        f"Username: {escape_markdown_v2(USERNAME)}\n"
+        f"Password: {escape_markdown_v2(PASSWORD)}\n"
+        f"SSH Port: 22\n"
+        f"WebSocket Ports: 80, 8080, 8880\n"
+        f"maxlogins 2\n"
+        f"Expires on: {escape_markdown_v2(EXPIRY_DATE)}"
+    )
+    await context.bot.send_message(chat_id=user_id, text=message, parse_mode="MarkdownV2")
+
 
 # =================================================================================
 # 5. أوامر البوت (Bot Commands & Handlers)
