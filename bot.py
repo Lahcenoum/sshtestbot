@@ -22,7 +22,7 @@ SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 DB_FILE = 'ssh_bot_users.db'
 
 # --- قيم نظام النقاط ---
-COST_PER_ACCOUNT = 4
+COST_PER_ACCOUNT = 1
 REFERRAL_BONUS = 4
 DAILY_LOGIN_BONUS = 1
 INITIAL_POINTS = 2
@@ -187,10 +187,15 @@ def escape_markdown_v2(text: str) -> str:
     escape_chars = r'\_*[]()~`>#+-=|{}.!'
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
+def generate_username():
+    """Generates a username starting with 'botssh' followed by 6 random chars."""
+    random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+    return f"botssh{random_part}"
+
 def generate_password():
-    """توليد كلمة سر آمنة مكونة من 12 حرفاً ورقماً فقط."""
-    safe_chars = string.ascii_lowercase + string.digits
-    return ''.join(random.choices(safe_chars, k=12))
+    """Generates a password starting with 'sshdatbot' followed by 3 random chars."""
+    random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=3))
+    return f"sshdatbot{random_part}"
 
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if not is_feature_enabled('force_join'): return True
@@ -240,7 +245,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    get_or_create_user(user_id) # Ensure user exists
+    get_or_create_user(user_id)
     if not await check_membership(user_id, context):
         await start(update, context)
         return
@@ -276,9 +281,9 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(get_text('not_enough_points', lang_code).format(cost=COST_PER_ACCOUNT))
             return
 
-    username = f"user{user_id}"
+    username = generate_username()
     password = generate_password()
-    command_to_run = ["sudo", SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
+    command_to_run = [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
     
     try:
         process = subprocess.run(command_to_run, capture_output=True, text=True, timeout=30, check=True)
@@ -289,7 +294,6 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, created_at) VALUES (?, ?, ?)", (user_id, username, datetime.now()))
             conn.commit()
         
-        # Although the password is safe, escaping the whole output is a good practice
         escaped_details = escape_markdown_v2(result)
         await update.message.reply_text(
             get_text('creation_success', lang_code).format(details=escaped_details, days=ACCOUNT_EXPIRY_DAYS),
