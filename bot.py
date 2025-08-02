@@ -188,12 +188,10 @@ def escape_markdown_v2(text: str) -> str:
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
 def generate_username():
-    """Generates a username starting with 'botssh' followed by 6 random chars."""
     random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
     return f"botssh{random_part}"
 
 def generate_password():
-    """Generates a password starting with 'sshdatbot' followed by 3 random chars."""
     random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=3))
     return f"sshdatbot{random_part}"
 
@@ -271,12 +269,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    get_or_create_user(user_id)
     lang_code = get_user_language(user_id)
-    
+    print(f"[DEBUG] User {user_id} requested an SSH account.")
+
+    # Ensure user exists before any operation
+    get_or_create_user(user_id)
+
     if is_feature_enabled('points_system'):
         with sqlite3.connect(DB_FILE) as conn:
             points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+        print(f"[DEBUG] User has {points} points. Cost is {COST_PER_ACCOUNT}.")
         if points < COST_PER_ACCOUNT:
             await update.message.reply_text(get_text('not_enough_points', lang_code).format(cost=COST_PER_ACCOUNT))
             return
@@ -284,25 +286,49 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = generate_username()
     password = generate_password()
     command_to_run = [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
+    print(f"[DEBUG] Preparing to run command: {' '.join(command_to_run)}")
     
     try:
-        process = subprocess.run(command_to_run, capture_output=True, text=True, timeout=30, check=True)
-        result = process.stdout
+        process = subprocess.run(
+            command_to_run, 
+            capture_output=True, 
+            text=True, 
+            timeout=30, 
+            check=True
+        )
+        
+        result = process.stdout.strip()
+        print(f"[DEBUG] Script executed successfully. Raw output:\n{result}")
+
         with sqlite3.connect(DB_FILE) as conn:
             if is_feature_enabled('points_system'):
                 conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
             conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, created_at) VALUES (?, ?, ?)", (user_id, username, datetime.now()))
             conn.commit()
+        print("[DEBUG] Database updated successfully.")
+        
+        # --- Diagnostic Print Statement ---
+        print("[DIAGNOSTIC] Applying escape_markdown_v2 fix before sending.")
         
         escaped_details = escape_markdown_v2(result)
+        print(f"[DEBUG] Escaped details for Telegram:\n{escaped_details}")
+
         await update.message.reply_text(
             get_text('creation_success', lang_code).format(details=escaped_details, days=ACCOUNT_EXPIRY_DAYS),
             parse_mode=ParseMode.MARKDOWN_V2
         )
-    except Exception as e:
-        print(f"Error creating SSH account: {e}")
-        await update.message.reply_text(get_text('creation_error', lang_code))
+        print("[DEBUG] Success message sent to user.")
 
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Script failed with exit code {e.returncode}.")
+        print(f"  - STDOUT: {e.stdout}")
+        print(f"  - STDERR: {e.stderr}")
+        await update.message.reply_text(get_text('creation_error', lang_code) + f"\n\nError Code: S{e.returncode}")
+    except Exception as e:
+        print(f"[ERROR] An unexpected error occurred in get_ssh: {e}")
+        await update.message.reply_text(get_text('creation_error', lang_code) + f"\n\nError Code: G1")
+
+# ... (بقية الدوال تبقى كما هي)
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     get_or_create_user(user_id)
