@@ -6,7 +6,7 @@ import string
 import sqlite3
 import re
 from datetime import datetime, date, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
@@ -68,8 +68,8 @@ TEXTS = {
         "no_channels_available": "ℹ️ لا توجد قنوات متاحة للمكافآت حاليًا.",
         "admin_panel_header": "⚙️ لوحة تحكم الأدمن",
         "admin_manage_channels_button": " إدارة قنوات المكافآت",
-        "admin_manage_codes_button": " إدارة أكواد الهدايا", # <-- نص جديد
-        "admin_create_code_button": "➕ إنشاء كود جديد", # <-- نص جديد
+        "admin_manage_codes_button": " إدارة أكواد الهدايا",
+        "admin_create_code_button": "➕ إنشاء كود جديد",
         "admin_user_count_button": "👤 عدد المستخدمين",
         "admin_user_count_info": "📊 العدد الإجمالي للمستخدمين: {count}",
         "admin_add_channel_button": "➕ إضافة قناة",
@@ -353,20 +353,26 @@ async def contact_admin_command(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(get_text('contact_admin_info', lang_code).format(contact_info=ADMIN_CONTACT_INFO))
 
 # --- Admin Panel & Features ---
-async def admin_panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_USER_ID: return
-    lang_code = get_user_language(update.effective_user.id)
+async def admin_panel_command(update: Update | CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
+    # Determine user and how to reply based on the type of 'update'
+    if isinstance(update, CallbackQuery):
+        user = update.from_user
+        reply_func = update.edit_message_text
+    else: # It's a regular Update from a command
+        user = update.effective_user
+        reply_func = update.message.reply_text
+
+    if user.id != ADMIN_USER_ID:
+        return
+
+    lang_code = get_user_language(user.id)
     keyboard = [
         [InlineKeyboardButton(get_text('admin_manage_channels_button', lang_code), callback_data='admin_manage_channels')],
         [InlineKeyboardButton(get_text('admin_manage_codes_button', lang_code), callback_data='admin_manage_codes')],
         [InlineKeyboardButton(get_text('admin_user_count_button', lang_code), callback_data='admin_user_count')]
     ]
     
-    # Check if coming from a query or a command
-    if update.callback_query:
-        await update.callback_query.edit_message_text(get_text('admin_panel_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        await update.message.reply_text(get_text('admin_panel_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+    await reply_func(get_text('admin_panel_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
