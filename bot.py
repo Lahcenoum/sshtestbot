@@ -238,6 +238,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    get_or_create_user(user_id) # Ensure user exists
     if not await check_membership(user_id, context):
         await start(update, context)
         return
@@ -257,13 +258,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     for key, func in button_map.items():
-        # Check against all languages
         if text in [get_text(key, lang) for lang in TEXTS.keys() if lang in TEXTS]:
             await func(update, context)
             return
 
 async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    get_or_create_user(user_id) # ✨ FIX: Ensure user exists before checking points
     lang_code = get_user_language(user_id)
     
     if is_feature_enabled('points_system'):
@@ -297,6 +298,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         accounts = conn.execute("SELECT ssh_username FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
@@ -319,6 +321,7 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
@@ -326,6 +329,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         ref_code = conn.execute("SELECT referral_code FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
@@ -335,6 +339,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -354,16 +359,14 @@ async def contact_admin_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 # --- Admin Panel & Features ---
 async def admin_panel_command(update: Update | CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
-    # Determine user and how to reply based on the type of 'update'
     if isinstance(update, CallbackQuery):
         user = update.from_user
         reply_func = update.edit_message_text
-    else: # It's a regular Update from a command
+    else:
         user = update.effective_user
         reply_func = update.message.reply_text
 
-    if user.id != ADMIN_USER_ID:
-        return
+    if user.id != ADMIN_USER_ID: return
 
     lang_code = get_user_language(user.id)
     keyboard = [
@@ -478,6 +481,7 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 # --- Rewards Logic ---
 async def rewards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
     lang_code = get_user_language(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         all_channels = conn.execute("SELECT channel_id, channel_link, reward_points, channel_name FROM reward_channels").fetchall()
@@ -495,7 +499,7 @@ async def rewards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if cid not in claimed_ids:
              keyboard.append([InlineKeyboardButton(get_text('verify_join_button', lang_code), callback_data=f"verify_r_{cid}")])
     
-    reply_func = update.callback_query.edit_message_text if update.callback_query else update.message.reply_text
+    reply_func = update.callback_query.edit_message_text if hasattr(update, 'callback_query') and update.callback_query else update.message.reply_text
     await reply_func(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -533,6 +537,7 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def process_redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    get_or_create_user(user_id) # ✨ FIX: Ensure user exists
     lang_code = get_user_language(user_id)
     code = update.message.text
     with sqlite3.connect(DB_FILE) as conn:
@@ -602,15 +607,17 @@ async def receive_code_uses(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Settings Command ---
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_USER_ID: return
-    lang_code = get_user_language(update.effective_user.id)
+    user = update.effective_user
+    if user.id != ADMIN_USER_ID: return
+    
+    lang_code = get_user_language(user.id)
     features = {'points_system': 'نظام النقاط', 'force_join': 'الانضمام الإجباري', 'redeem_codes': 'أكواد المكافآت'}
     keyboard = []
     for key, name in features.items():
         status = "🟢" if is_feature_enabled(key) else "🔴"
         keyboard.append([InlineKeyboardButton(f"{name}: {status}", callback_data=f"toggle_{key}")])
     
-    reply_func = update.callback_query.edit_message_text if update.callback_query else update.message.reply_text
+    reply_func = update.callback_query.edit_message_text if hasattr(update, 'callback_query') and update.callback_query else update.message.reply_text
     await reply_func("⚙️ لوحة تحكم إعدادات البوت", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def toggle_setting_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
