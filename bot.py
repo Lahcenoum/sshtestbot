@@ -11,6 +11,9 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Messa
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 
+# هنا مكان تعريف SERVER_IP
+SERVER_IP = subprocess.getoutput("/usr/bin/hostname -I | /usr/bin/awk '{print $1}'")
+
 # =================================================================================
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
