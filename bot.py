@@ -16,7 +16,7 @@ from telegram.error import BadRequest
 # =================================================================================
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 ADMIN_USER_ID = 5344028088 # ⚠️ استبدل هذا بمعرف المستخدم الخاص بك
-ADMIN_CONTACT_INFO = "@digitalvu" # ⚠️ ضع هنا رابط حسابك أو معرفك
+ADMIN_CONTACT_INFO = "@YourAdminUsername" # ⚠️ ضع هنا رابط حسابك أو معرفك
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 DB_FILE = 'ssh_bot_users.db'
@@ -137,7 +137,7 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS reward_channels (channel_id INTEGER PRIMARY KEY, channel_link TEXT NOT NULL, reward_points INTEGER NOT NULL, channel_name TEXT NOT NULL)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS user_channel_rewards (telegram_user_id INTEGER, channel_id INTEGER, PRIMARY KEY (telegram_user_id, channel_id))''')
-
+        
         default_settings = {'points_system': 'enabled', 'force_join': 'enabled', 'redeem_codes': 'enabled'}
         for key, value in default_settings.items():
             cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
@@ -183,7 +183,6 @@ def get_text(key, lang_code='ar'):
 # =================================================================================
 # 4. دوال مساعدة (Helper Functions)
 # =================================================================================
-# دوال مساعدة
 def escape_markdown_v2(text: str) -> str:
     escape_chars = r'\_*[]()~`>#+-=|{}.!'
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
@@ -199,20 +198,6 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
         return all(m.status in ['member', 'administrator', 'creator'] for m in [channel, group])
     except Exception:
         return False
-
-async def send_server_info(user_id: int, context: ContextTypes.DEFAULT_TYPE):
-    message = (
-        f"Host/IP: {escape_markdown_v2(SERVER_IP)}\n"
-        f"Hostname: {escape_markdown_v2('fastvpsvip.freehost000.xyz')}\n"
-        f"Username: {escape_markdown_v2(USERNAME)}\n"
-        f"Password: {escape_markdown_v2(PASSWORD)}\n"
-        f"SSH Port: 22\n"
-        f"WebSocket Ports: 80, 8080, 8880\n"
-        f"maxlogins 2\n"
-        f"Expires on: {escape_markdown_v2(EXPIRY_DATE)}"
-    )
-    await context.bot.send_message(chat_id=user_id, text=message, parse_mode="MarkdownV2")
-
 
 # =================================================================================
 # 5. أوامر البوت (Bot Commands & Handlers)
@@ -291,7 +276,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     username = f"user{user_id}"
     password = generate_password()
-    command_to_run = ["sudo", SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
+    command_to_run = [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
     
     try:
         process = subprocess.run(command_to_run, capture_output=True, text=True, timeout=30, check=True)
