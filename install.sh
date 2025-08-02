@@ -5,6 +5,7 @@
 #  يقوم هذا السكربت بأتمتة جميع خطوات الإعداد على خادم Ubuntu/Debian جديد.
 #  - يتضمن تقييد الحسابات باتصالين (2) فقط.
 #  - يتضمن تثبيت المكتبات الإضافية اللازمة (pytz).
+#  - يقوم بإعداد توكن البوت ومعرف الأدمن ومعلومات التواصل تلقائياً.
 # ==============================================================================
 
 # --- إعدادات أساسية ---
@@ -29,12 +30,12 @@ echo "      بدء عملية تثبيت وإعداد بوت SSH من GitHub"
 echo "=================================================="
 
 # الخطوة 1: تحديث النظام وتثبيت المتطلبات الأساسية
-echo -e "\n[1/11] تحديث النظام وتثبيت المتطلبات (git, python3-full, python3-venv)..."
+echo -e "\n[1/13] تحديث النظام وتثبيت المتطلبات (git, python3-full, python3-venv)..."
 apt-get update
 apt-get install -y git python3-full python3-venv sqlite3
 
 # الخطوة 2: تهيئة نظام تقييد الجلسات
-echo -e "\n[2/11] تهيئة نظام تقييد الجلسات (اتصالان لكل مستخدم)..."
+echo -e "\n[2/13] تهيئة نظام تقييد الجلسات (اتصالان لكل مستخدم)..."
 groupadd ssh_bot_users &>/dev/null
 LIMIT_RULE="@ssh_bot_users - maxlogins 2"
 sed -i '/@ssh_bot_users - maxlogins/d' /etc/security/limits.conf
@@ -48,7 +49,7 @@ if grep -q "UsePAM no" /etc/ssh/sshd_config; then
 fi
 
 # الخطوة 3: استنساخ المشروع من GitHub
-echo -e "\n[3/11] استنساخ المشروع من GitHub إلى '$PROJECT_DIR'..."
+echo -e "\n[3/13] استنساخ المشروع من GitHub إلى '$PROJECT_DIR'..."
 rm -rf "$PROJECT_DIR"
 git clone "$GIT_REPO_URL" "$PROJECT_DIR"
 
@@ -62,17 +63,17 @@ fi
 cd "$PROJECT_DIR" || exit
 
 # الخطوة 4: تنظيم الملفات ونقل السكربتات
-echo -e "\n[4/11] تنظيم الملفات ونقل السكربتات إلى المسار الصحيح..."
+echo -e "\n[4/13] تنظيم الملفات ونقل السكربتات إلى المسار الصحيح..."
 if [ -f "create_ssh_user.sh" ]; then mv create_ssh_user.sh /usr/local/bin/; fi
 if [ -f "monitor_ssh.sh" ]; then mv monitor_ssh.sh /usr/local/bin/; fi
 if [ -f "delete_expired_users.sh" ]; then mv delete_expired_users.sh /usr/local/bin/; fi
 
 # الخطوة 5: إنشاء بيئة بايثون الافتراضية
-echo -e "\n[5/11] إنشاء بيئة بايثون الافتراضية (venv)..."
+echo -e "\n[5/13] إنشاء بيئة بايثون الافتراضية (venv)..."
 python3 -m venv venv
 
 # الخطوة 6: تثبيت مكتبات بايثون المطلوبة
-echo -e "\n[6/11] تثبيت مكتبات بايثون المطلوبة..."
+echo -e "\n[6/13] تثبيت مكتبات بايثون المطلوبة..."
 if [ -f "requirements.txt" ]; then
     source venv/bin/activate
     pip install -r requirements.txt
@@ -83,11 +84,10 @@ else
     exit 1
 fi
 
-# ✨ الخطوة 7: تثبيت المكتبات الإضافية وتحديث المتطلبات
-echo -e "\n[7/11] تثبيت المكتبات الإضافية (pytz)..."
+# الخطوة 7: تثبيت المكتبات الإضافية وتحديث المتطلبات
+echo -e "\n[7/13] تثبيت المكتبات الإضافية (pytz)..."
 source venv/bin/activate
 pip install pytz
-# إضافة المكتبة إلى ملف المتطلبات لضمان تثبيتها في المستقبل
 if ! grep -qF "pytz" requirements.txt; then
     echo "pytz" >> requirements.txt
 fi
@@ -95,36 +95,51 @@ deactivate
 echo "-> تم تثبيت pytz بنجاح."
 
 # الخطوة 8: إعداد توكن البوت
-echo -e "\n[8/11] إعداد توكن بوت تليجرام..."
-echo "الرجاء إدخال توكن البوت الذي حصلت عليه من BotFather."
-read -p "Enter Bot Token: " BOT_TOKEN
-
+echo -e "\n[8/13] إعداد توكن بوت تليجرام..."
+read -p "الرجاء إدخال توكن البوت: " BOT_TOKEN
 if [ -z "$BOT_TOKEN" ]; then
     echo "❌ خطأ: لم يتم إدخال التوكن. التثبيت سيتوقف."
     exit 1
 fi
+# ✨ تعديل دقيق: استبدال السطر بأكمله لضمان عدم حدوث أخطاء
+sed -i "s|^TOKEN = \"YOUR_TELEGRAM_BOT_TOKEN\".*|TOKEN = \"$BOT_TOKEN\"|" "$PROJECT_DIR/bot.py"
+echo "-> تم حفظ التوكن بنجاح."
 
-PLACEHOLDER="YOUR_TELEGRAM_BOT_TOKEN"
-if grep -q "$PLACEHOLDER" "$PROJECT_DIR/bot.py"; then
-    sed -i "s/$PLACEHOLDER/$BOT_TOKEN/g" "$PROJECT_DIR/bot.py"
-    echo "-> تم حفظ التوكن بنجاح في ملف bot.py."
-else
-    echo "⚠️ تحذير: لم يتم العثور على الكلمة المحددة ($PLACEHOLDER) في ملف bot.py. قد تحتاج لإضافته يدويًا."
+# الخطوة 9: إعداد معرف الأدمن (Admin ID)
+echo -e "\n[9/13] إعداد معرف مستخدم الأدمن..."
+read -p "الرجاء إدخال معرف الأدمن الرقمي الخاص بك: " ADMIN_ID
+if [ -z "$ADMIN_ID" ]; then
+    echo "❌ خطأ: لم يتم إدخال معرف الأدمن. التثبيت سيتوقف."
+    exit 1
 fi
+# ✨ تعديل دقيق: استبدال السطر الذي يبدأ بـ ADMIN_USER_ID
+sed -i "s|^ADMIN_USER_ID = .*|ADMIN_USER_ID = $ADMIN_ID|" "$PROJECT_DIR/bot.py"
+echo "-> تم حفظ معرف الأدمن بنجاح."
 
-# الخطوة 9: إعطاء صلاحيات التنفيذ للسكربتات
-echo -e "\n[9/11] إعطاء صلاحيات التنفيذ للسكربتات..."
+# الخطوة 10: إعداد معلومات التواصل مع الأدمن
+echo -e "\n[10/13] إعداد معلومات التواصل مع الأدمن..."
+read -p "الرجاء إدخال معرف تليجرام الخاص بك للتواصل (مثال: @username): " ADMIN_CONTACT
+if [ -z "$ADMIN_CONTACT" ]; then
+    echo "❌ خطأ: لم يتم إدخال معرف التواصل. التثبيت سيتوقف."
+    exit 1
+fi
+# ✨ تعديل دقيق: استبدال السطر الذي يبدأ بـ ADMIN_CONTACT_INFO
+sed -i "s|^ADMIN_CONTACT_INFO = \".*\".*|ADMIN_CONTACT_INFO = \"$ADMIN_CONTACT\"|" "$PROJECT_DIR/bot.py"
+echo "-> تم حفظ معلومات التواصل بنجاح."
+
+# الخطوة 11: إعطاء صلاحيات التنفيذ للسكربتات
+echo -e "\n[11/13] إعطاء صلاحيات التنفيذ للسكربتات..."
 chmod +x /usr/local/bin/create_ssh_user.sh
 chmod +x /usr/local/bin/monitor_ssh.sh
 chmod +x /usr/local/bin/delete_expired_users.sh
 
-# الخطوة 10: إعداد المهام المجدولة (Cron Jobs)
-echo -e "\n[10/11] إعداد المهام المجدولة..."
+# الخطوة 12: إعداد المهام المجدولة (Cron Jobs)
+echo -e "\n[12/13] إعداد المهام المجدولة..."
 (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/monitor_ssh.sh" ; echo "*/5 * * * * /usr/local/bin/monitor_ssh.sh") | crontab -
 (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/delete_expired_users.sh" ; echo "0 0 * * * /usr/local/bin/delete_expired_users.sh") | crontab -
 
-# الخطوة 11: إعداد البوت كخدمة دائمة (systemd)
-echo -e "\n[11/11] إعداد البوت كخدمة دائمة (systemd)..."
+# الخطوة 13: إعداد البوت كخدمة دائمة (systemd)
+echo -e "\n[13/13] إعداد البوت كخدمة دائمة (systemd)..."
 cat > /etc/systemd/system/ssh_bot.service << EOL
 [Unit]
 Description=Telegram SSH Bot Service
@@ -150,15 +165,13 @@ systemctl start ssh_bot.service
 # عرض التعليمات النهائية
 echo -e "\n=================================================="
 echo "✅ اكتمل التثبيت بنجاح!"
+echo "   تم إعداد جميع المعلومات المطلوبة تلقائياً."
 echo "   البوت يعمل الآن كخدمة دائمة في الخلفية."
 echo "=================================================="
 echo -e "\n**ملاحظات هامة:**\n"
-echo "1. **معرف المدير (Admin ID):** لا تنسَ تعديل ملف 'bot.py' وإضافة معرف المستخدم الخاص بك."
-echo "   - استخدم الأمر: nano ${PROJECT_DIR}/bot.py"
-echo ""
-echo "2. **لمراقبة حالة البوت أو رؤية الأخطاء:**"
+echo "1. **لمراقبة حالة البوت أو رؤية الأخطاء:**"
 echo "   - استخدم الأمر: systemctl status ssh_bot.service"
 echo ""
-echo "3. **لإعادة تشغيل البوت بعد أي تعديل:**"
+echo "2. **لإعادة تشغيل البوت بعد أي تعديل:**"
 echo "   - استخدم الأمر: systemctl restart ssh_bot.service"
 echo "--------------------------------------------------"
