@@ -16,7 +16,7 @@ from telegram.error import BadRequest
 # =================================================================================
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 ADMIN_USER_ID = 5344028088 # ⚠️ استبدل هذا بمعرف المستخدم الخاص بك
-ADMIN_CONTACT_INFO = "@YourAdminUsername" # ⚠️ ضع هنا رابط حسابك أو معرفك
+ADMIN_CONTACT_INFO = "@digitalvu" # ⚠️ ضع هنا رابط حسابك أو معرفك
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 DB_FILE = 'ssh_bot_users.db'
@@ -276,7 +276,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     username = f"user{user_id}"
     password = generate_password()
-    command_to_run = [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
+    command_to_run = ["sudo", SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
     
     try:
         process = subprocess.run(command_to_run, capture_output=True, text=True, timeout=30, check=True)
