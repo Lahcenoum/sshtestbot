@@ -276,7 +276,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     username = f"user{user_id}"
     password = generate_password()
-    command_to_run = [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
+    command_to_run = ["sudo", SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
     
     try:
         process = subprocess.run(command_to_run, capture_output=True, text=True, timeout=30, check=True)
