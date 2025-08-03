@@ -300,15 +300,24 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = process.stdout.strip()
         print(f"[DEBUG] Script executed successfully. Raw output:\n{result}")
 
+        # ✨✨✨ Diagnostic Step ✨✨✨
+        try:
+            print("[DIAGNOSTIC] Attempting to send raw script output to admin.")
+            await context.bot.send_message(
+                chat_id=ADMIN_USER_ID,
+                text=f"--- SCRIPT OUTPUT ---\nUser: {username}\n\n{result}"
+            )
+            print("[DIAGNOSTIC] Raw output sent to admin successfully.")
+        except Exception as e:
+            print(f"[DIAGNOSTIC_ERROR] Failed to send raw output to admin: {e}")
+        # ✨✨✨ End of Diagnostic Step ✨✨✨
+
         with sqlite3.connect(DB_FILE) as conn:
             if is_feature_enabled('points_system'):
                 conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
             conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, created_at) VALUES (?, ?, ?)", (user_id, username, datetime.now()))
             conn.commit()
         print("[DEBUG] Database updated successfully.")
-        
-        # --- Diagnostic Print Statement ---
-        print("[DIAGNOSTIC] Applying escape_markdown_v2 fix before sending.")
         
         escaped_details = escape_markdown_v2(result)
         print(f"[DEBUG] Escaped details for Telegram:\n{escaped_details}")
