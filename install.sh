@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # ==============================================================================
-#  سكربت التثبيت من مستودع GitHub
+#  سكربت التثبيت من مستودع GitHub (نسخة مُصححة لمشكلة PEP 668)
 # ==============================================================================
 
 # --- إعدادات أساسية ---
 # ⚠️ غيّر هذا الرابط إلى رابط المستودع الخاص بك على GitHub
-GIT_REPO_URL="https://github.com/Lahcenoum/sshtestbot.git"
+GIT_REPO_URL="https://github.com/username/your-repo.git"
 PROJECT_DIR="/home/ssh_bot"
 
 # --- نهاية قسم الإعدادات ---
@@ -28,7 +28,6 @@ apt-get install -y git python3-venv python3-pip
 
 # 2. استنساخ المشروع من GitHub
 echo -e "\n[2/7] استنساخ المشروع من GitHub..."
-# إزالة المجلد القديم إذا كان موجودًا لضمان نسخة نظيفة
 rm -rf "$PROJECT_DIR"
 git clone "$GIT_REPO_URL" "$PROJECT_DIR"
 
@@ -57,12 +56,17 @@ echo -e "\n[4/7] نقل السكريبتات وإعطاء الصلاحيات..."
 mv "${PROJECT_DIR}/create_ssh_user.sh" /usr/local/bin/
 chmod +x /usr/local/bin/create_ssh_user.sh
 
-# 5. إعداد بيئة بايثون وتثبيت المكتبات
+# 5. إعداد بيئة بايثون وتثبيت المكتبات (الطريقة الصحيحة)
 echo -e "\n[5/7] إعداد بيئة بايثون وتثبيت المكتبات من requirements.txt..."
 python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-deactivate
+
+# --- بداية التعديل ---
+# نستخدم subshell لتشغيل الأوامر داخل البيئة الافتراضية
+(
+  source venv/bin/activate
+  pip install -r requirements.txt
+)
+# --- نهاية التعديل ---
 
 # 6. إعداد البوت كخدمة (systemd)
 echo -e "\n[6/7] إعداد البوت كخدمة دائمة..."
