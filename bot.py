@@ -113,6 +113,7 @@ TEXTS = {
         "invalid_input": "❌ إدخال غير صالح، يرجى المحاولة مرة أخرى.",
         "operation_cancelled": "✅ تم إلغاء العملية.",
         "creating_account": "جاري إنشاء الحساب...",
+        "points": "نقاط",
     },
     'en': {
         "welcome": "Welcome to the SSH Service Bot!\n\nUse the buttons below to interact or change your language with /language.",
@@ -182,6 +183,7 @@ TEXTS = {
         "invalid_input": "❌ Invalid input, please try again.",
         "operation_cancelled": "✅ Operation cancelled.",
         "creating_account": "Creating account...",
+        "points": "points",
     },
 }
 
@@ -421,8 +423,9 @@ async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def set_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
     lang_code = query.data.split('_')[-1]
-    set_user_lang(query.from_user.id, lang_code)
+    set_user_lang(user_id, lang_code)
     lang_map = {'en': 'English', 'ar': 'العربية'}
     await query.edit_message_text(text=get_text('language_set', lang_code).format(lang_name=lang_map.get(lang_code)))
     await start(update, context, from_callback=True)
@@ -766,11 +769,11 @@ def main():
     edit_info_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_panel_callback, pattern='^admin_edit_connection_info$')],
         states={
-            EDIT_HOSTNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_hostname_received)],
-            EDIT_WS_PORTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_ws_ports_received)],
-            EDIT_SSL_PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_ssl_port_received)],
-            EDIT_UDPCUSTOM: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_udpcustom_received)],
-            EDIT_ADMIN_CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_admin_contact_received)],
+            EDIT_HOSTNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_hostname_received)],
+            EDIT_WS_PORTS: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_ws_ports_received)],
+            EDIT_SSL_PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_ssl_port_received)],
+            EDIT_UDPCUSTOM: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_udpcustom_received)],
+            EDIT_ADMIN_CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_admin_contact_received)],
         },
         fallbacks=[CommandHandler('cancel', cancel_conversation)],
         **conv_defaults
@@ -778,10 +781,10 @@ def main():
     add_channel_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(add_channel_start, pattern='^admin_add_channel_start$')],
         states={
-            ADD_CHANNEL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_channel_get_name)],
-            ADD_CHANNEL_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_channel_get_link)],
-            ADD_CHANNEL_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_channel_get_id)],
-            ADD_CHANNEL_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_channel_get_points)],
+            ADD_CHANNEL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, add_channel_get_name)],
+            ADD_CHANNEL_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, add_channel_get_link)],
+            ADD_CHANNEL_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, add_channel_get_id)],
+            ADD_CHANNEL_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, add_channel_get_points)],
         },
         fallbacks=[CommandHandler('cancel', cancel_conversation)],
         **conv_defaults
@@ -789,23 +792,23 @@ def main():
     create_code_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(create_code_start, pattern='^admin_create_code_start$')],
         states={
-            CREATE_CODE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_code_name)],
-            CREATE_CODE_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_code_points)],
-            CREATE_CODE_USES: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_code_uses)],
+            CREATE_CODE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_name)],
+            CREATE_CODE_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_points)],
+            CREATE_CODE_USES: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_uses)],
         },
         fallbacks=[CommandHandler('cancel', cancel_conversation)],
         **conv_defaults
     )
     redeem_code_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(f"^{get_text('redeem_code_button', 'ar')}$") | filters.Regex(f"^{get_text('redeem_code_button', 'en')}$"), redeem_code_start)],
-        states={REDEEM_CODE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, redeem_code_received)]},
+        entry_points=[MessageHandler(filters.Regex(f"^{get_text('redeem_code_button', 'ar')}$") | filters.Regex(f"^{get_text('redeem_code_button', 'en')}$") & filters.ChatType.PRIVATE, redeem_code_start)],
+        states={REDEEM_CODE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, redeem_code_received)]},
         fallbacks=[CommandHandler('cancel', cancel_conversation)]
     )
 
     # Add command handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_panel))
-    app.add_handler(CommandHandler("language", language_command))
+    app.add_handler(CommandHandler("start", start, filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("admin", admin_panel, filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("language", language_command, filters.ChatType.PRIVATE))
 
     # Add conversation handlers
     app.add_handler(add_channel_conv)
@@ -814,12 +817,12 @@ def main():
     app.add_handler(edit_info_conv)
 
     # Add message handlers for main menu buttons
-    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'en'))}$"), get_ssh))
-    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('my_account_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('my_account_button', 'en'))}$"), my_account))
-    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('balance_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('balance_button', 'en'))}$"), balance_command))
-    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('daily_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('daily_button', 'en'))}$"), daily_command))
-    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('earn_points_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('earn_points_button', 'en'))}$"), earn_points_command))
-    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('contact_admin_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('contact_admin_button', 'en'))}$"), contact_admin_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'en'))}$") & filters.ChatType.PRIVATE, get_ssh))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('my_account_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('my_account_button', 'en'))}$") & filters.ChatType.PRIVATE, my_account))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('balance_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('balance_button', 'en'))}$") & filters.ChatType.PRIVATE, balance_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('daily_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('daily_button', 'en'))}$") & filters.ChatType.PRIVATE, daily_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('earn_points_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('earn_points_button', 'en'))}$") & filters.ChatType.PRIVATE, earn_points_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('contact_admin_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('contact_admin_button', 'en'))}$") & filters.ChatType.PRIVATE, contact_admin_command))
 
     # Add callback query handlers
     app.add_handler(CallbackQueryHandler(verify_join_callback, pattern='^verify_join$'))
