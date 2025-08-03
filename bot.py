@@ -8,25 +8,23 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.error import BadRequest
 
-# هذا التوكن يتم تحديثه بواسطة سكربت التثبيت
+# The token is replaced by the installation script
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN" 
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 ACCOUNT_EXPIRY_DAYS = 2
 
 def escape_markdown_v2(text: str) -> str:
-    """يقوم بتهريب الأحرف الخاصة لتنسيق MarkdownV2 الخاص بتليجرام."""
-    # قائمة الأحرف التي يجب تهريبها
+    # Escapes special characters for Telegram's MarkdownV2 format.
     escape_chars = r'\_*[]()~`>#+-=|{}.!'
-    # استخدام re.sub لتهريب كل حرف بوضع \ قبله
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
 def generate_password():
-    """ينشئ كلمة مرور عشوائية."""
+    # Creates a random password.
     return "ssh-" + ''.join(random.choices(string.ascii_letters + string.digits, k=6))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """يعرض رسالة ترحيب وزر الطلب."""
+    # Displays a welcome message and the request button.
     keyboard = [[KeyboardButton("💳 طلب حساب SSH جديد")]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(
@@ -35,7 +33,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """يستدعي السكريبت لإنشاء حساب SSH ويرسل التفاصيل."""
+    # Calls the script to create an SSH account and sends the details.
     await update.message.reply_text("⏳ جاري إنشاء الحساب...")
     try:
         user_id = update.effective_user.id
@@ -43,7 +41,6 @@ async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         password = generate_password()
         command_to_run = ["sudo", SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
 
-        # تنفيذ الأمر على الخادم
         process = subprocess.run(
             command_to_run,
             capture_output=True,
@@ -53,7 +50,6 @@ async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         result_details = process.stdout
         
-        # تهريب الأحرف الخاصة من نتيجة السكريبت
         safe_details = escape_markdown_v2(result_details)
 
         response_message = (
@@ -62,24 +58,20 @@ async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚠️ **ملاحظة**: سيتم حذف الحساب تلقائيًا بعد **{ACCOUNT_EXPIRY_DAYS} أيام**."
         )
         
-        # إرسال رسالة النجاح
         await update.message.reply_text(response_message, parse_mode='MarkdownV2')
 
     except BadRequest as e:
-        # هذا الخطأ يحدث إذا فشل التنسيق في تليجرام
+        # Fallback for formatting errors
         print(f"--- Telegram Formatting Error: {e} ---")
-        # كحل بديل، أرسل الرسالة كنص عادي بدون تنسيق
         await update.message.reply_text(f"✅ تم إنشاء حسابك بنجاح، ولكن فشل عرض التفاصيل بشكل منسق. إليك البيانات:\n\n{result_details}")
     except Exception as e:
-        # أي خطأ آخر غير متوقع
+        # Fallback for other errors
         print("--- AN UNEXPECTED ERROR OCCURRED ---")
         traceback.print_exc()
-        print("------------------------------------")
         await update.message.reply_text("❌ حدث خطأ أثناء إنشاء الحساب. قد يكون لديك حساب بالفعل.")
 
 def main():
-    """الدالة الرئيسية لتشغيل البوت."""
-    # التأكد من أن التوكن تم تعيينه
+    # Main function to run the bot.
     if "YOUR_TELEGRAM_BOT_TOKEN" in TOKEN:
         print("FATAL ERROR: Bot token is not set in the bot.py file.")
         sys.exit(1)
