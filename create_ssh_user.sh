@@ -1,74 +1,49 @@
 #!/bin/bash
 
-# =================================================================
-#  سكربت لإنشاء مستخدم SSH جديد مع كلمة مرور وتاريخ انتهاء صلاحية
-# =================================================================
+# ==============================================================================
+#  Script to create a temporary SSH user on a Linux system.
+#  It accepts username, password, and expiry days as arguments.
+# ==============================================================================
 
-# التحقق من أن السكربت يعمل بصلاحيات root
-if [ "$(/usr/bin/id -u)" -ne 0 ]; then
-  echo "Error: This script must be run as root."
-  exit 1
-fi
-
-# التحقق من أن عدد المعاملات (arguments) هو 3
+# --- التحقق من المدخلات ---
 if [ "$#" -ne 3 ]; then
-    echo "Error: Incorrect usage."
-    echo "Example: $0 <username> <password> <expiry_days>"
+    echo "Usage: $0 <username> <password> <expiry_days>"
     exit 1
 fi
 
-# تعيين المتغيرات
+# --- تعيين المتغيرات من الوسائط ---
 USERNAME=$1
 PASSWORD=$2
 EXPIRY_DAYS=$3
 
-# حساب تاريخ انتهاء الصلاحية
-EXPIRY_DATE=$(/usr/bin/date -d "+$EXPIRY_DAYS days" +%Y-%m-%d)
-
-# التحقق من وجود المستخدم مسبقًا
-if /usr/bin/id "$USERNAME" &>/dev/null; then
+# --- التحقق مما إذا كان المستخدم موجودًا بالفعل ---
+if id "$USERNAME" &>/dev/null; then
     echo "Error: User '$USERNAME' already exists."
     exit 1
 fi
 
-# --- بدء عملية الإنشاء ---
+# --- حساب تاريخ انتهاء الصلاحية ---
+# يستخدم أمر `date` لإنشاء التاريخ بالتنسيق YYYY-MM-DD
+EXPIRY_DATE=$(date -d "+$EXPIRY_DAYS days" +%Y-%m-%d)
 
-# 1. إنشاء المستخدم
-/usr/sbin/useradd -m -s /bin/bash "$USERNAME"
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to create the user."
+# --- إنشاء المستخدم ---
+# يستخدم `openssl passwd` لتشفير كلمة المرور قبل إضافتها
+# -m : يقوم بإنشاء المجلد الرئيسي للمستخدم
+# -e : يحدد تاريخ انتهاء صلاحية الحساب
+# -s : يحدد الشل الافتراضي (bash)
+useradd "$USERNAME" -m -e "$EXPIRY_DATE" -s /bin/bash -p "$(openssl passwd -1 "$PASSWORD")"
+
+# --- التحقق من نجاح عملية الإنشاء ---
+if [ $? -eq 0 ]; then
+    # --- إخراج تفاصيل الحساب لكي يلتقطها البوت ---
+    # استبدل "YOUR_SERVER_IP" بالآي بي الفعلي لسيرفرك
+    echo "Host/IP: YOUR_SERVER_IP"
+    echo "Username: $USERNAME"
+    echo "Password: $PASSWORD"
+    echo "Expires on: $EXPIRY_DATE"
+else
+    echo "Error: Failed to create user '$USERNAME'."
     exit 1
 fi
-
-# ✨ سطر جديد: إضافة المستخدم إلى مجموعة تقييد الجلسات
-/usr/sbin/usermod -a -G ssh_bot_users "$USERNAME"
-
-# 2. تعيين كلمة المرور
-echo "$USERNAME:$PASSWORD" | /usr/sbin/chpasswd
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to set the password."
-    /usr/sbin/userdel -r "$USERNAME"
-    exit 1
-fi
-
-# 3. تعيين تاريخ انتهاء الصلاحية
-/usr/bin/chage -E "$EXPIRY_DATE" "$USERNAME"
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to set the expiration date."
-    /usr/sbin/userdel -r "$USERNAME"
-    exit 1
-fi
-
-# --- عرض بيانات الحساب ---
-SERVER_IP=$(/usr/bin/hostname -I | /usr/bin/awk '{print $1}')
-
-echo "Host/IP: $SERVER_IP"
-echo "Hostname: fastvpsvip.freehost000.xyz"
-echo "Username: $USERNAME"
-echo "Password: $PASSWORD"
-echo "SSH Port: 22"
-echo "WebSocket Ports: 80, 8080, 8880"
-echo "maxlogins 2"
-echo "Expires on: $EXPIRY_DATE"
 
 exit 0
