@@ -318,10 +318,11 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             error_details = e.stderr
         else:
             error_details = str(e)
+        
+        # ✨✨✨ إرسال رسالة الخطأ كنص عادي أيضاً ✨✨✨
         await context.bot.send_message(
             chat_id=ADMIN_USER_ID,
-            text=f"🚨 فشل إنشاء حساب للمستخدم {user_id}.\n\nالخطأ:\n`{error_details}`",
-            parse_mode=ParseMode.MARKDOWN
+            text=f"🚨 فشل إنشاء حساب للمستخدم {user_id}.\n\nالخطأ:\n{error_details}"
         )
         await update.message.reply_text(get_text('creation_error', lang_code))
 
