@@ -17,7 +17,6 @@ from telegram.error import BadRequest
 # =================================================================================
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN" 
 ADMIN_USER_ID = 5344028088 
-# سيتم الآن قراءة هذه المعلومة من قاعدة البيانات، وهذه قيمة احتياطية
 ADMIN_CONTACT_INFO = "@YourAdminUsername" 
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
@@ -39,15 +38,15 @@ GROUP_LINK = "https://t.me/dgtliA"
 # Conversation handler states
 (ADD_CHANNEL_NAME, ADD_CHANNEL_LINK, ADD_CHANNEL_ID, ADD_CHANNEL_POINTS) = range(4)
 (CREATE_CODE_NAME, CREATE_CODE_POINTS, CREATE_CODE_USES) = range(4, 7)
-(BAN_USER_ID, UNBAN_USER_ID, REDEEM_CODE_INPUT) = range(7, 10)
-(EDIT_HOSTNAME, EDIT_WS_PORTS, EDIT_SSL_PORT, EDIT_UDPCUSTOM, EDIT_ADMIN_CONTACT) = range(10, 15)
+(REDEEM_CODE_INPUT,) = range(7, 8)
+(EDIT_HOSTNAME, EDIT_WS_PORTS, EDIT_SSL_PORT, EDIT_UDPCUSTOM, EDIT_ADMIN_CONTACT) = range(8, 13)
 
 # =================================================================================
 # 2. دعم اللغات (Localization)
 # =================================================================================
 TEXTS = {
     'ar': {
-        "welcome": "أهلاً بك في بوت خدمة SSH!\n\nاستخدم الأزرار أدناه للتفاعل.",
+        "welcome": "أهلاً بك في بوت خدمة SSH!\n\nاستخدم الأزرار أدناه للتفاعل أو غير لغتك بالأمر /language.",
         "get_ssh_button": "💳 طلب حساب جديد",
         "my_account_button": "👤 حسابي",
         "balance_button": "💰 رصيدي",
@@ -72,7 +71,6 @@ TEXTS = {
         "no_accounts_found": "ℹ️ لم يتم العثور على أي حسابات نشطة مرتبطة بك.",
         "your_accounts": "<b>👤 حساباتك النشطة:</b>",
         "account_details": "🏷️ <b>اسم المستخدم:</b> <code>{username}</code>\n🗓️ <b>تاريخ انتهاء الصلاحية:</b> <code>{expiry}</code>",
-        "banned_message": "❌ لقد تم حظرك من استخدام هذا البوت.",
         "rewards_header": "انضم إلى هذه القنوات والمجموعات واحصل على نقاط!",
         "verify_join_button": "✅ تحقق من الانضمام",
         "reward_success": "🎉 رائع! لقد حصلت على {points} نقطة.",
@@ -87,7 +85,7 @@ TEXTS = {
         "admin_return_button": "⬅️ عودة",
         "admin_manage_rewards_button": "📢 إدارة قنوات الربح",
         "admin_manage_codes_button": "🎁 إدارة أكواد الهدايا",
-        "admin_manage_users_button": "👥 إدارة المستخدمين",
+        "admin_user_stats_button": "📊 إحصائيات المستخدمين",
         "admin_edit_connection_info_button": "⚙️ تعديل معلومات الاتصال",
         "admin_add_channel_button": "➕ إضافة قناة/مجموعة",
         "admin_remove_channel_button": "➖ إزالة قناة/مجموعة",
@@ -103,77 +101,140 @@ TEXTS = {
         "admin_create_code_prompt_points": "الآن أرسل عدد النقاط التي يمنحها هذا الكود:",
         "admin_create_code_prompt_uses": "أخيراً، أرسل عدد المستخدمين الذين يمكنهم استخدام هذا الكود:",
         "admin_code_created": "✅ تم إنشاء الكود <code>{code}</code> بنجاح. يمنح <b>{points}</b> نقطة ومتاح لـ <b>{uses}</b> مستخدمين.",
-        "admin_ban_user_button": "🚫 حظر مستخدم",
-        "admin_unban_user_button": "✅ إلغاء حظر مستخدم",
-        "admin_ban_user_prompt": "أرسل المعرف الرقمي (ID) للمستخدم الذي تريد حظره:",
-        "admin_unban_user_prompt": "أرسل المعرف الرقمي (ID) للمستخدم الذي تريد إلغاء حظره:",
-        "admin_user_banned_success": "✅ تم حظر المستخدم بنجاح.",
-        "admin_user_unbanned_success": "✅ تم إلغاء حظر المستخدم بنجاح.",
         "admin_edit_hostname_prompt": "أرسل الـ Hostname الجديد:",
         "admin_edit_ws_ports_prompt": "أرسل بورتات Websocket الجديدة (مثال: 80, 8880):",
         "admin_edit_ssl_port_prompt": "أرسل بورت SSL الجديد:",
         "admin_edit_udpcustom_prompt": "أرسل بورت UDPCUSTOM الجديد:",
         "admin_edit_contact_prompt": "أرسل معلومات التواصل الجديدة (مثال: @username):",
         "admin_info_updated_success": "✅ تم تحديث معلومات الاتصال بنجاح.",
+        "user_stats_info": "<b>📊 إحصائيات المستخدمين:</b>\n\n- <b>إجمالي المستخدمين:</b> {total_users}\n- <b>النشطون اليوم:</b> {active_today}\n- <b>النشطون أمس:</b> {active_yesterday}\n- <b>المستخدمون الجدد اليوم:</b> {new_today}",
+        "choose_language": "اختر لغتك المفضلة:",
+        "language_set": "✅ تم تعيين اللغة إلى: {lang_name}",
         "invalid_input": "❌ إدخال غير صالح، يرجى المحاولة مرة أخرى.",
         "operation_cancelled": "✅ تم إلغاء العملية.",
+        "creating_account": "جاري إنشاء الحساب...",
+    },
+    'en': {
+        "welcome": "Welcome to the SSH Service Bot!\n\nUse the buttons below to interact or change your language with /language.",
+        "get_ssh_button": "💳 Request New Account",
+        "my_account_button": "👤 My Account",
+        "balance_button": "💰 My Balance",
+        "earn_points_button": "🎁 Earn Points",
+        "redeem_code_button": "🎁 Redeem Code",
+        "daily_button": "☀️ Daily Bonus",
+        "contact_admin_button": "👨‍💻 Contact Admin",
+        "contact_admin_info": "To contact the admin, please message: {contact_info}",
+        "not_enough_points": "⚠️ You don't have enough points. The cost is <b>{cost}</b> points.",
+        "creation_error": "❌ An error occurred while creating the account. You may already have an account or another error occurred.",
+        "creation_wait": "⏳ You cannot create a new account right now. Please wait <b>{time_left}</b>.",
+        "force_join_prompt": "❗️To use the bot, you must first join our channel and group.\n\nAfter joining, press the '✅ Verified' button.",
+        "force_join_channel_button": "📢 Join Channel",
+        "force_join_group_button": "👥 Join Group",
+        "force_join_verify_button": "✅ Verified",
+        "force_join_success": "✅ Thank you for joining! You can now use the bot.",
+        "force_join_fail": "❌ Your membership could not be verified. Please make sure you have joined both and try again.",
+        "join_bonus_awarded": "🎉 Join bonus! You have received {bonus} points.",
+        "balance_info": "💰 Your current balance is: <b>{points}</b> points.",
+        "daily_bonus_claimed": "🎉 You've received your daily bonus: <b>{bonus}</b> points! Your new balance is <b>{new_balance}</b>.",
+        "daily_bonus_already_claimed": "ℹ️ You have already claimed your daily bonus. Come back tomorrow!",
+        "no_accounts_found": "ℹ️ No active accounts associated with you were found.",
+        "your_accounts": "<b>👤 Your Active Accounts:</b>",
+        "account_details": "🏷️ <b>Username:</b> <code>{username}</code>\n🗓️ <b>Expiration Date:</b> <code>{expiry}</code>",
+        "rewards_header": "Join these channels and groups to get points!",
+        "verify_join_button": "✅ Verify Join",
+        "reward_success": "🎉 Great! You've received {points} points.",
+        "reward_fail": "❌ You haven't joined yet. Try again after joining.",
+        "no_channels_available": "ℹ️ There are currently no channels available for rewards.",
+        "redeem_prompt": "Please send the code you want to redeem.",
+        "redeem_success": "🎉 Congratulations! You've received <b>{points}</b> points. Your new balance is <b>{new_balance}</b>.",
+        "redeem_invalid_code": "❌ This code is invalid or does not exist.",
+        "redeem_limit_reached": "❌ This code has reached its maximum usage limit.",
+        "redeem_already_used": "❌ You have already used this code.",
+        "admin_panel_header": "⚙️ Admin Control Panel",
+        "admin_return_button": "⬅️ Back",
+        "admin_manage_rewards_button": "📢 Manage Reward Channels",
+        "admin_manage_codes_button": "🎁 Manage Gift Codes",
+        "admin_user_stats_button": "📊 User Statistics",
+        "admin_edit_connection_info_button": "⚙️ Edit Connection Info",
+        "admin_add_channel_button": "➕ Add Channel/Group",
+        "admin_remove_channel_button": "➖ Remove Channel/Group",
+        "admin_add_channel_name_prompt": "Send the channel name:",
+        "admin_add_channel_link_prompt": "Now send the full channel link:",
+        "admin_add_channel_id_prompt": "Send the numeric channel ID (starts with -100):",
+        "admin_add_channel_points_prompt": "Finally, send the number of reward points:",
+        "admin_channel_added_success": "✅ Channel added successfully.",
+        "admin_remove_channel_prompt": "Choose the channel you want to remove:",
+        "admin_channel_removed_success": "🗑️ Channel removed successfully.",
+        "admin_create_code_button": "➕ Create New Code",
+        "admin_create_code_prompt_name": "Send the new code name (e.g., WELCOME2025):",
+        "admin_create_code_prompt_points": "Now send the number of points this code grants:",
+        "admin_create_code_prompt_uses": "Finally, send the number of users who can use this code:",
+        "admin_code_created": "✅ Code <code>{code}</code> created successfully. It grants <b>{points}</b> points and is available for <b>{uses}</b> users.",
+        "admin_edit_hostname_prompt": "Send the new Hostname:",
+        "admin_edit_ws_ports_prompt": "Send the new Websocket ports (e.g., 80, 8880):",
+        "admin_edit_ssl_port_prompt": "Send the new SSL port:",
+        "admin_edit_udpcustom_prompt": "Send the new UDPCUSTOM port:",
+        "admin_edit_contact_prompt": "Send the new contact info (e.g., @username):",
+        "admin_info_updated_success": "✅ Connection info updated successfully.",
+        "user_stats_info": "<b>📊 User Statistics:</b>\n\n- <b>Total Users:</b> {total_users}\n- <b>Active Today:</b> {active_today}\n- <b>Active Yesterday:</b> {active_yesterday}\n- <b>New Today:</b> {new_today}",
+        "choose_language": "Choose your preferred language:",
+        "language_set": "✅ Language has been set to: {lang_name}",
+        "invalid_input": "❌ Invalid input, please try again.",
+        "operation_cancelled": "✅ Operation cancelled.",
+        "creating_account": "Creating account...",
     },
 }
 
 def get_text(key, lang_code='ar'):
-    # Fetches text for the given key and language.
-    return TEXTS.get(lang_code, TEXTS['ar']).get(key, key)
+    return TEXTS.get(lang_code, TEXTS['en']).get(key, key)
 
 # =================================================================================
 # 3. إدارة قاعدة البيانات (Database Management)
 # =================================================================================
 def init_db():
-    # Initializes the database and creates tables if they don't exist.
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE)')
         cursor.execute('CREATE TABLE IF NOT EXISTS reward_channels (channel_id INTEGER PRIMARY KEY, channel_link TEXT NOT NULL, reward_points INTEGER NOT NULL, channel_name TEXT NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS user_channel_rewards (telegram_user_id INTEGER, channel_id INTEGER, PRIMARY KEY (telegram_user_id, channel_id))')
         cursor.execute('CREATE TABLE IF NOT EXISTS redeem_codes (code TEXT PRIMARY KEY, points INTEGER, max_uses INTEGER, current_uses INTEGER DEFAULT 0)')
         cursor.execute('CREATE TABLE IF NOT EXISTS redeemed_users (code TEXT, telegram_user_id INTEGER, PRIMARY KEY (code, telegram_user_id))')
-        cursor.execute('CREATE TABLE IF NOT EXISTS banned_users (telegram_user_id INTEGER PRIMARY KEY)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS daily_activity (user_id INTEGER PRIMARY KEY, last_seen_date DATE NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS connection_settings (key TEXT PRIMARY KEY, value TEXT)')
         
-        # Add default settings if they don't exist
         default_settings = {
-            "hostname": "your.hostname.com",
-            "ws_ports": "80, 8880, 8888, 2053",
-            "ssl_port": "443",
-            "udpcustom_port": "7300",
-            "admin_contact": ADMIN_CONTACT_INFO
+            "hostname": "your.hostname.com", "ws_ports": "80, 8880, 8888, 2053",
+            "ssl_port": "443", "udpcustom_port": "7300", "admin_contact": ADMIN_CONTACT_INFO
         }
         for key, value in default_settings.items():
             cursor.execute("INSERT OR IGNORE INTO connection_settings (key, value) VALUES (?, ?)", (key, value))
-            
         conn.commit()
 
-def get_or_create_user(user_id):
-    # Gets a user from the database or creates a new one.
+def get_or_create_user(user_id, lang_code='ar'):
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         if not cursor.execute("SELECT 1 FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone():
-            cursor.execute("INSERT INTO users (telegram_user_id, points) VALUES (?, ?)", (user_id, INITIAL_POINTS))
+            today = date.today().isoformat()
+            cursor.execute("INSERT INTO users (telegram_user_id, points, language_code, created_date) VALUES (?, ?, ?, ?)", (user_id, INITIAL_POINTS, lang_code, today))
             conn.commit()
 
-def is_user_banned(user_id):
-    # Checks if a user is in the banned list.
+def get_user_lang(user_id):
     with sqlite3.connect(DB_FILE) as conn:
-        return conn.execute("SELECT 1 FROM banned_users WHERE telegram_user_id = ?", (user_id,)).fetchone() is not None
+        res = conn.execute("SELECT language_code FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
+        return res[0] if res else 'ar'
+
+def set_user_lang(user_id, lang_code):
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute("UPDATE users SET language_code = ? WHERE telegram_user_id = ?", (lang_code, user_id))
+        conn.commit()
 
 def get_connection_setting(key):
-    # Retrieves a specific connection setting from the database.
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute("SELECT value FROM connection_settings WHERE key = ?", (key,)).fetchone()
         return result[0] if result else ""
 
 def set_connection_setting(key, value):
-    # Updates a specific connection setting in the database.
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("INSERT OR REPLACE INTO connection_settings (key, value) VALUES (?, ?)", (key, value))
         conn.commit()
@@ -181,22 +242,21 @@ def set_connection_setting(key, value):
 # =================================================================================
 # 4. دوال مساعدة وديكورات (Helpers & Decorators)
 # =================================================================================
-def check_banned(func):
-    # Decorator to block banned users from using commands.
+def log_activity(func):
+    """Decorator to log user activity for statistics."""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user_id = update.effective_user.id
-        if is_user_banned(user_id):
-            await update.message.reply_text(get_text('banned_message'))
-            return
+        today = date.today().isoformat()
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.execute("INSERT OR REPLACE INTO daily_activity (user_id, last_seen_date) VALUES (?, ?)", (user_id, today))
+            conn.commit()
         return await func(update, context, *args, **kwargs)
     return wrapper
 
 def generate_password():
-    # Generates a new random password.
     return "bot" + ''.join(random.choices(string.ascii_letters + string.digits, k=6))
 
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    # Checks if the user is a member of the required channel and group.
     try:
         channel_member = await context.bot.get_chat_member(REQUIRED_CHANNEL_ID, user_id)
         group_member = await context.bot.get_chat_member(REQUIRED_GROUP_ID, user_id)
@@ -210,41 +270,36 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
 # =================================================================================
 # 5. أوامر البوت الأساسية (Core Bot Commands)
 # =================================================================================
-@check_banned
+@log_activity
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False):
-    # Handles the /start command.
     user = update.effective_user
     message = update.message if not from_callback else update.callback_query.message
     get_or_create_user(user.id)
+    lang_code = get_user_lang(user.id)
 
-    # --- START OF TEMPORARY CHANGE FOR DIAGNOSIS ---
-    # The block below is temporarily disabled to check if the force-join feature is the problem.
-    # If the bot works after this change, the problem is with the channel IDs or bot permissions.
-    # if not await check_membership(user.id, context):
-    #     keyboard = [
-    #         [InlineKeyboardButton(get_text('force_join_channel_button'), url=CHANNEL_LINK)],
-    #         [InlineKeyboardButton(get_text('force_join_group_button'), url=GROUP_LINK)],
-    #         [InlineKeyboardButton(get_text('force_join_verify_button'), callback_data='verify_join')],
-    #     ]
-    #     await message.reply_text(get_text('force_join_prompt'), reply_markup=InlineKeyboardMarkup(keyboard))
-    #     return
-    # --- END OF TEMPORARY CHANGE ---
+    if not await check_membership(user.id, context):
+        keyboard = [
+            [InlineKeyboardButton(get_text('force_join_channel_button', lang_code), url=CHANNEL_LINK)],
+            [InlineKeyboardButton(get_text('force_join_group_button', lang_code), url=GROUP_LINK)],
+            [InlineKeyboardButton(get_text('force_join_verify_button', lang_code), callback_data='verify_join')],
+        ]
+        await message.reply_text(get_text('force_join_prompt', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+        return
 
     keyboard_layout = [
-        [KeyboardButton(get_text('get_ssh_button'))],
-        [KeyboardButton(get_text('balance_button')), KeyboardButton(get_text('my_account_button'))],
-        [KeyboardButton(get_text('daily_button')), KeyboardButton(get_text('earn_points_button'))],
-        [KeyboardButton(get_text('redeem_code_button')), KeyboardButton(get_text('contact_admin_button'))]
+        [KeyboardButton(get_text('get_ssh_button', lang_code))],
+        [KeyboardButton(get_text('balance_button', lang_code)), KeyboardButton(get_text('my_account_button', lang_code))],
+        [KeyboardButton(get_text('daily_button', lang_code)), KeyboardButton(get_text('earn_points_button', lang_code))],
+        [KeyboardButton(get_text('redeem_code_button', lang_code)), KeyboardButton(get_text('contact_admin_button', lang_code))]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard_layout, resize_keyboard=True)
-    await message.reply_text(get_text('welcome'), reply_markup=reply_markup)
+    await message.reply_text(get_text('welcome', lang_code), reply_markup=reply_markup)
 
-@check_banned
+@log_activity
 async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Handles the request for a new SSH account.
     user_id = update.effective_user.id
+    lang_code = get_user_lang(user_id)
     
-    # Check for one account per 24 hours limit.
     with sqlite3.connect(DB_FILE) as conn:
         last_creation = conn.execute("SELECT MAX(created_at) FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
     
@@ -254,16 +309,16 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_left = timedelta(hours=24) - (datetime.now() - last_creation_time)
             hours, remainder = divmod(time_left.seconds, 3600)
             minutes, _ = divmod(remainder, 60)
-            await update.message.reply_text(get_text('creation_wait').format(time_left=f"{hours} ساعة و {minutes} دقيقة"), parse_mode=ParseMode.HTML)
+            await update.message.reply_text(get_text('creation_wait', lang_code).format(time_left=f"{hours}h {minutes}m"), parse_mode=ParseMode.HTML)
             return
 
-    await update.message.reply_text("⏳ جاري إنشاء الحساب...")
+    await update.message.reply_text("⏳ " + get_text('creating_account', lang_code))
 
     with sqlite3.connect(DB_FILE) as conn:
         user_points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
     
     if user_points < COST_PER_ACCOUNT:
-        await update.message.reply_text(get_text('not_enough_points').format(cost=COST_PER_ACCOUNT), parse_mode=ParseMode.HTML)
+        await update.message.reply_text(get_text('not_enough_points', lang_code).format(cost=COST_PER_ACCOUNT), parse_mode=ParseMode.HTML)
         return
 
     try:
@@ -280,13 +335,11 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result_details = process.stdout
         
-        # Fetch connection info from DB to build the message.
         hostname = get_connection_setting("hostname")
         ws_ports = get_connection_setting("ws_ports")
         ssl_port = get_connection_setting("ssl_port")
         udpcustom_port = get_connection_setting("udpcustom_port")
 
-        # Format the success message using HTML.
         account_info = (
             f"<b>✅ تم إنشاء حسابك بنجاح!</b>\n\n"
             f"<b>البيانات الأساسية:</b>\n"
@@ -302,276 +355,298 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         print("--- AN UNEXPECTED ERROR OCCURRED ---"); traceback.print_exc()
-        await update.message.reply_text(get_text('creation_error'))
+        await update.message.reply_text(get_text('creation_error', lang_code))
 
-@check_banned
+@log_activity
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Shows the user's active accounts.
     user_id = update.effective_user.id
+    lang_code = get_user_lang(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         accounts = conn.execute("SELECT ssh_username FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
     
     if not accounts:
-        await update.message.reply_text(get_text('no_accounts_found')); return
+        await update.message.reply_text(get_text('no_accounts_found', lang_code)); return
 
-    response_parts = [get_text('your_accounts')]
+    response_parts = [get_text('your_accounts', lang_code)]
     for (username,) in accounts:
         try:
             expiry_output = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True, stderr=subprocess.DEVNULL)
             expiry_line = next((line for line in expiry_output.split('\n') if "Account expires" in line), None)
             expiry = expiry_line.split(':', 1)[1].strip() if expiry_line else "N/A"
-            response_parts.append(get_text('account_details').format(username=html.escape(username), expiry=html.escape(expiry)))
+            response_parts.append(get_text('account_details', lang_code).format(username=html.escape(username), expiry=html.escape(expiry)))
         except Exception as e: print(f"Could not get expiry for {username}: {e}")
     
     await update.message.reply_text("\n\n".join(response_parts), parse_mode=ParseMode.HTML)
 
-@check_banned
+@log_activity
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Shows the user's point balance.
     user_id = update.effective_user.id
+    lang_code = get_user_lang(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-    await update.message.reply_text(get_text('balance_info').format(points=points), parse_mode=ParseMode.HTML)
+    await update.message.reply_text(get_text('balance_info', lang_code).format(points=points), parse_mode=ParseMode.HTML)
 
-@check_banned
+@log_activity
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Gives the user a daily point bonus.
     user_id = update.effective_user.id
+    lang_code = get_user_lang(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         today = date.today()
         last_claim_str = cursor.execute("SELECT last_daily_claim FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
         
         if last_claim_str and date.fromisoformat(last_claim_str) >= today:
-            await update.message.reply_text(get_text('daily_bonus_already_claimed')); return
+            await update.message.reply_text(get_text('daily_bonus_already_claimed', lang_code)); return
             
         cursor.execute("UPDATE users SET points = points + ?, last_daily_claim = ? WHERE telegram_user_id = ?", (DAILY_LOGIN_BONUS, today.isoformat(), user_id))
         conn.commit()
         new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-        await update.message.reply_text(get_text('daily_bonus_claimed').format(bonus=DAILY_LOGIN_BONUS, new_balance=new_balance), parse_mode=ParseMode.HTML)
+        await update.message.reply_text(get_text('daily_bonus_claimed', lang_code).format(bonus=DAILY_LOGIN_BONUS, new_balance=new_balance), parse_mode=ParseMode.HTML)
 
-@check_banned
+@log_activity
 async def contact_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Shows the admin's contact info.
+    lang_code = get_user_lang(update.effective_user.id)
     contact_info = get_connection_setting("admin_contact")
-    await update.message.reply_text(get_text('contact_admin_info').format(contact_info=contact_info))
+    await update.message.reply_text(get_text('contact_admin_info', lang_code).format(contact_info=contact_info))
+
+@log_activity
+async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang_code = get_user_lang(update.effective_user.id)
+    keyboard = [
+        [InlineKeyboardButton("🇬🇧 English", callback_data='set_lang_en')],
+        [InlineKeyboardButton("🇸🇦 العربية", callback_data='set_lang_ar')],
+    ]
+    await update.message.reply_text(get_text('choose_language', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def set_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang_code = query.data.split('_')[-1]
+    set_user_lang(query.from_user.id, lang_code)
+    lang_map = {'en': 'English', 'ar': 'العربية'}
+    await query.edit_message_text(text=get_text('language_set', lang_code).format(lang_name=lang_map.get(lang_code)))
+    await start(update, context, from_callback=True)
+
 
 # =================================================================================
 # 6. Admin Panel & Features
 # =================================================================================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Displays the main admin panel.
     user_id = update.effective_user.id
     if user_id != ADMIN_USER_ID: return
-
+    lang_code = get_user_lang(user_id)
     keyboard = [
-        [InlineKeyboardButton(get_text('admin_manage_rewards_button'), callback_data='admin_manage_rewards')],
-        [InlineKeyboardButton(get_text('admin_manage_codes_button'), callback_data='admin_manage_codes')],
-        [InlineKeyboardButton(get_text('admin_manage_users_button'), callback_data='admin_manage_users')],
-        [InlineKeyboardButton(get_text('admin_edit_connection_info_button'), callback_data='admin_edit_connection_info')],
+        [InlineKeyboardButton(get_text('admin_manage_rewards_button', lang_code), callback_data='admin_manage_rewards')],
+        [InlineKeyboardButton(get_text('admin_manage_codes_button', lang_code), callback_data='admin_manage_codes')],
+        [InlineKeyboardButton(get_text('admin_user_stats_button', lang_code), callback_data='admin_user_stats')],
+        [InlineKeyboardButton(get_text('admin_edit_connection_info_button', lang_code), callback_data='admin_edit_connection_info')],
     ]
-    await update.message.reply_text(get_text('admin_panel_header'), reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text(get_text('admin_panel_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def show_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang_code = get_user_lang(query.from_user.id)
+    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+    with sqlite3.connect(DB_FILE) as conn:
+        total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        active_today = conn.execute("SELECT COUNT(*) FROM daily_activity WHERE last_seen_date = ?", (today,)).fetchone()[0]
+        active_yesterday = conn.execute("SELECT COUNT(*) FROM daily_activity WHERE last_seen_date = ?", (yesterday,)).fetchone()[0]
+        new_today = conn.execute("SELECT COUNT(*) FROM users WHERE created_date = ?", (today,)).fetchone()[0]
+    
+    stats_text = get_text('user_stats_info', lang_code).format(
+        total_users=total_users,
+        active_today=active_today,
+        active_yesterday=active_yesterday,
+        new_today=new_today
+    )
+    keyboard = [[InlineKeyboardButton(get_text('admin_return_button', lang_code), callback_data='admin_panel_main')]]
+    await query.edit_message_text(stats_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
 
 async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Handles all callbacks from the admin panel buttons.
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     if user_id != ADMIN_USER_ID: return
     
     data = query.data
+    lang_code = get_user_lang(user_id)
+
     if data == 'admin_panel_main':
         keyboard = [
-            [InlineKeyboardButton(get_text('admin_manage_rewards_button'), callback_data='admin_manage_rewards')],
-            [InlineKeyboardButton(get_text('admin_manage_codes_button'), callback_data='admin_manage_codes')],
-            [InlineKeyboardButton(get_text('admin_manage_users_button'), callback_data='admin_manage_users')],
-            [InlineKeyboardButton(get_text('admin_edit_connection_info_button'), callback_data='admin_edit_connection_info')],
+            [InlineKeyboardButton(get_text('admin_manage_rewards_button', lang_code), callback_data='admin_manage_rewards')],
+            [InlineKeyboardButton(get_text('admin_manage_codes_button', lang_code), callback_data='admin_manage_codes')],
+            [InlineKeyboardButton(get_text('admin_user_stats_button', lang_code), callback_data='admin_user_stats')],
+            [InlineKeyboardButton(get_text('admin_edit_connection_info_button', lang_code), callback_data='admin_edit_connection_info')],
         ]
-        await query.edit_message_text(get_text('admin_panel_header'), reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(get_text('admin_panel_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
     elif data == 'admin_manage_rewards':
         keyboard = [
-            [InlineKeyboardButton(get_text('admin_add_channel_button'), callback_data='admin_add_channel_start')],
-            [InlineKeyboardButton(get_text('admin_remove_channel_button'), callback_data='admin_remove_channel_start')],
-            [InlineKeyboardButton(get_text('admin_return_button'), callback_data='admin_panel_main')]
+            [InlineKeyboardButton(get_text('admin_add_channel_button', lang_code), callback_data='admin_add_channel_start')],
+            [InlineKeyboardButton(get_text('admin_remove_channel_button', lang_code), callback_data='admin_remove_channel_start')],
+            [InlineKeyboardButton(get_text('admin_return_button', lang_code), callback_data='admin_panel_main')]
         ]
-        await query.edit_message_text(get_text('admin_manage_rewards_button'), reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(get_text('admin_manage_rewards_button', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
     elif data == 'admin_manage_codes':
         keyboard = [
-            [InlineKeyboardButton(get_text('admin_create_code_button'), callback_data='admin_create_code_start')],
-            [InlineKeyboardButton(get_text('admin_return_button'), callback_data='admin_panel_main')]
+            [InlineKeyboardButton(get_text('admin_create_code_button', lang_code), callback_data='admin_create_code_start')],
+            [InlineKeyboardButton(get_text('admin_return_button', lang_code), callback_data='admin_panel_main')]
         ]
-        await query.edit_message_text(get_text('admin_manage_codes_button'), reply_markup=InlineKeyboardMarkup(keyboard))
-    elif data == 'admin_manage_users':
-        keyboard = [
-            [InlineKeyboardButton(get_text('admin_ban_user_button'), callback_data='admin_ban_user_start')],
-            [InlineKeyboardButton(get_text('admin_unban_user_button'), callback_data='admin_unban_user_start')],
-            [InlineKeyboardButton(get_text('admin_return_button'), callback_data='admin_panel_main')]
-        ]
-        await query.edit_message_text(get_text('admin_manage_users_button'), reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(get_text('admin_manage_codes_button', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+    elif data == 'admin_user_stats':
+        await show_user_stats(update, context)
     elif data == 'admin_edit_connection_info':
-        await query.edit_message_text(get_text('admin_edit_hostname_prompt'))
+        await query.edit_message_text(get_text('admin_edit_hostname_prompt', lang_code))
         context.user_data.clear() 
         return EDIT_HOSTNAME
 
-# --- Conversations for Admin ---
 async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
-    await query.edit_message_text(get_text('admin_add_channel_name_prompt'))
+    lang_code = get_user_lang(query.from_user.id)
+    await query.edit_message_text(get_text('admin_add_channel_name_prompt', lang_code))
     return ADD_CHANNEL_NAME
 
 async def add_channel_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['channel_name'] = update.message.text
-    await update.message.reply_text(get_text('admin_add_channel_link_prompt'))
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('admin_add_channel_link_prompt', lang_code))
     return ADD_CHANNEL_LINK
 
 async def add_channel_get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['channel_link'] = update.message.text
-    await update.message.reply_text(get_text('admin_add_channel_id_prompt'))
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('admin_add_channel_id_prompt', lang_code))
     return ADD_CHANNEL_ID
 
 async def add_channel_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang_code = get_user_lang(update.effective_user.id)
     try:
         context.user_data['channel_id'] = int(update.message.text)
-        await update.message.reply_text(get_text('admin_add_channel_points_prompt'))
+        await update.message.reply_text(get_text('admin_add_channel_points_prompt', lang_code))
         return ADD_CHANNEL_POINTS
     except ValueError:
-        await update.message.reply_text(get_text('invalid_input')); return ADD_CHANNEL_ID
+        await update.message.reply_text(get_text('invalid_input', lang_code)); return ADD_CHANNEL_ID
 
 async def add_channel_get_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang_code = get_user_lang(update.effective_user.id)
     try:
         points = int(update.message.text)
         with sqlite3.connect(DB_FILE) as conn:
             conn.execute("INSERT OR REPLACE INTO reward_channels (channel_id, channel_link, reward_points, channel_name) VALUES (?, ?, ?, ?)",
                          (context.user_data['channel_id'], context.user_data['channel_link'], points, context.user_data['channel_name']))
-        await update.message.reply_text(get_text('admin_channel_added_success'))
+        await update.message.reply_text(get_text('admin_channel_added_success', lang_code))
         context.user_data.clear()
         return ConversationHandler.END
     except ValueError:
-        await update.message.reply_text(get_text('invalid_input')); return ADD_CHANNEL_POINTS
+        await update.message.reply_text(get_text('invalid_input', lang_code)); return ADD_CHANNEL_POINTS
 
 async def remove_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
+    lang_code = get_user_lang(query.from_user.id)
     with sqlite3.connect(DB_FILE) as conn:
         channels = conn.execute("SELECT channel_id, channel_name FROM reward_channels").fetchall()
     if not channels:
-        await query.edit_message_text("لا توجد قنوات لإزالتها.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('admin_return_button'), callback_data='admin_manage_rewards')]])); return
+        await query.edit_message_text(get_text('no_channels_available', lang_code), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(get_text('admin_return_button', lang_code), callback_data='admin_manage_rewards')]])); return
     keyboard = [[InlineKeyboardButton(name, callback_data=f"remove_c_{cid}")] for cid, name in channels]
-    keyboard.append([InlineKeyboardButton(get_text('admin_return_button'), callback_data='admin_manage_rewards')])
-    await query.edit_message_text(get_text('admin_remove_channel_prompt'), reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard.append([InlineKeyboardButton(get_text('admin_return_button', lang_code), callback_data='admin_manage_rewards')])
+    await query.edit_message_text(get_text('admin_remove_channel_prompt', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def remove_channel_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
+    lang_code = get_user_lang(query.from_user.id)
     channel_id = int(query.data.split('_')[-1])
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("DELETE FROM reward_channels WHERE channel_id = ?", (channel_id,))
         conn.execute("DELETE FROM user_channel_rewards WHERE channel_id = ?", (channel_id,))
-    await query.edit_message_text(get_text('admin_channel_removed_success'))
+    await query.edit_message_text(get_text('admin_channel_removed_success', lang_code))
     await admin_panel_callback(update, context) 
 
 async def create_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
-    await query.edit_message_text(get_text('admin_create_code_prompt_name'))
+    lang_code = get_user_lang(query.from_user.id)
+    await query.edit_message_text(get_text('admin_create_code_prompt_name', lang_code))
     return CREATE_CODE_NAME
 
 async def receive_code_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['code_name'] = update.message.text
-    await update.message.reply_text(get_text('admin_create_code_prompt_points'))
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('admin_create_code_prompt_points', lang_code))
     return CREATE_CODE_POINTS
 
 async def receive_code_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang_code = get_user_lang(update.effective_user.id)
     try:
         context.user_data['code_points'] = int(update.message.text)
-        await update.message.reply_text(get_text('admin_create_code_prompt_uses'))
+        await update.message.reply_text(get_text('admin_create_code_prompt_uses', lang_code))
         return CREATE_CODE_USES
     except ValueError:
-        await update.message.reply_text(get_text('invalid_input')); return CREATE_CODE_POINTS
+        await update.message.reply_text(get_text('invalid_input', lang_code)); return CREATE_CODE_POINTS
 
 async def receive_code_uses(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang_code = get_user_lang(update.effective_user.id)
     try:
         uses = int(update.message.text)
         name = context.user_data['code_name']
         points = context.user_data['code_points']
         with sqlite3.connect(DB_FILE) as conn:
             conn.execute("INSERT OR REPLACE INTO redeem_codes (code, points, max_uses) VALUES (?, ?, ?)", (name, points, uses))
-        await update.message.reply_text(get_text('admin_code_created').format(code=name, points=points, uses=uses), parse_mode=ParseMode.HTML)
+        await update.message.reply_text(get_text('admin_code_created', lang_code).format(code=name, points=points, uses=uses), parse_mode=ParseMode.HTML)
         context.user_data.clear()
         return ConversationHandler.END
     except ValueError:
-        await update.message.reply_text(get_text('invalid_input')); return CREATE_CODE_USES
+        await update.message.reply_text(get_text('invalid_input', lang_code)); return CREATE_CODE_USES
 
-async def ban_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; await query.answer()
-    await query.edit_message_text(get_text('admin_ban_user_prompt'))
-    return BAN_USER_ID
-
-async def ban_user_id_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        user_id_to_ban = int(update.message.text)
-        with sqlite3.connect(DB_FILE) as conn:
-            conn.execute("INSERT OR IGNORE INTO banned_users (telegram_user_id) VALUES (?)", (user_id_to_ban,))
-        await update.message.reply_text(get_text('admin_user_banned_success'))
-        return ConversationHandler.END
-    except ValueError:
-        await update.message.reply_text(get_text('invalid_input')); return BAN_USER_ID
-
-async def unban_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; await query.answer()
-    await query.edit_message_text(get_text('admin_unban_user_prompt'))
-    return UNBAN_USER_ID
-
-async def unban_user_id_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        user_id_to_unban = int(update.message.text)
-        with sqlite3.connect(DB_FILE) as conn:
-            conn.execute("DELETE FROM banned_users WHERE telegram_user_id = ?", (user_id_to_unban,))
-        await update.message.reply_text(get_text('admin_user_unbanned_success'))
-        return ConversationHandler.END
-    except ValueError:
-        await update.message.reply_text(get_text('invalid_input')); return UNBAN_USER_ID
-
-# Conversation for editing connection info
 async def edit_hostname_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['hostname'] = update.message.text
-    await update.message.reply_text(get_text('admin_edit_ws_ports_prompt'))
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('admin_edit_ws_ports_prompt', lang_code))
     return EDIT_WS_PORTS
 
 async def edit_ws_ports_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['ws_ports'] = update.message.text
-    await update.message.reply_text(get_text('admin_edit_ssl_port_prompt'))
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('admin_edit_ssl_port_prompt', lang_code))
     return EDIT_SSL_PORT
 
 async def edit_ssl_port_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['ssl_port'] = update.message.text
-    await update.message.reply_text(get_text('admin_edit_udpcustom_prompt'))
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('admin_edit_udpcustom_prompt', lang_code))
     return EDIT_UDPCUSTOM
 
 async def edit_udpcustom_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['udpcustom_port'] = update.message.text
-    await update.message.reply_text(get_text('admin_edit_contact_prompt'))
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('admin_edit_contact_prompt', lang_code))
     return EDIT_ADMIN_CONTACT
 
 async def edit_admin_contact_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang_code = get_user_lang(update.effective_user.id)
     set_connection_setting('hostname', context.user_data['hostname'])
     set_connection_setting('ws_ports', context.user_data['ws_ports'])
     set_connection_setting('ssl_port', context.user_data['ssl_port'])
     set_connection_setting('udpcustom_port', context.user_data['udpcustom_port'])
     set_connection_setting('admin_contact', update.message.text)
-    await update.message.reply_text(get_text('admin_info_updated_success'))
+    await update.message.reply_text(get_text('admin_info_updated_success', lang_code))
     context.user_data.clear()
     return ConversationHandler.END
 
 # =================================================================================
 # 7. User Rewards and Codes
 # =================================================================================
-@check_banned
+@log_activity
 async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    lang_code = get_user_lang(user_id)
     with sqlite3.connect(DB_FILE) as conn:
         all_channels = conn.execute("SELECT channel_id, channel_link, reward_points, channel_name FROM reward_channels").fetchall()
         claimed_ids = {row[0] for row in conn.execute("SELECT channel_id FROM user_channel_rewards WHERE telegram_user_id = ?", (user_id,))}
     
     if not all_channels:
-        await update.message.reply_text(get_text('no_channels_available')); return
+        await update.message.reply_text(get_text('no_channels_available', lang_code)); return
 
     keyboard = []
     for cid, link, points, name in all_channels:
@@ -579,67 +654,70 @@ async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             button_text = f"✅ {name}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data="dummy")])
         else:
-            button_text = f"{name} (+{points} نقطة)"
+            button_text = f"{name} (+{points} {get_text('points', lang_code)})"
             keyboard.append([InlineKeyboardButton(button_text, url=link)])
-            keyboard.append([InlineKeyboardButton(get_text('verify_join_button'), callback_data=f"verify_r_{cid}_{points}")])
+            keyboard.append([InlineKeyboardButton(get_text('verify_join_button', lang_code), callback_data=f"verify_r_{cid}_{points}")])
     
     reply_func = update.callback_query.edit_message_text if update.callback_query else update.message.reply_text
-    await reply_func(get_text('rewards_header'), reply_markup=InlineKeyboardMarkup(keyboard))
+    await reply_func(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def verify_reward_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
     user_id = query.from_user.id
+    lang_code = get_user_lang(user_id)
     
     try:
         _, _, channel_id_str, points_str = query.data.split('_')
         channel_id, points = int(channel_id_str), int(points_str)
     except (ValueError, IndexError):
-        await query.answer("خطأ في البيانات.", show_alert=True); return
+        await query.answer("Data error.", show_alert=True); return
 
     try:
         member = await context.bot.get_chat_member(chat_id=channel_id, user_id=user_id)
         if member.status not in ['member', 'administrator', 'creator']:
-            await query.answer(get_text('reward_fail'), show_alert=True); return
+            await query.answer(get_text('reward_fail', lang_code), show_alert=True); return
     except Exception as e:
-        await query.answer(f"خطأ: لا يمكن التحقق. تأكد من أن البوت مشرف في القناة.", show_alert=True); return
+        await query.answer(f"Error: Could not verify. Make sure the bot is an admin in the channel.", show_alert=True); return
     
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         if cursor.execute("SELECT 1 FROM user_channel_rewards WHERE telegram_user_id = ? AND channel_id = ?", (user_id, channel_id)).fetchone():
-            await query.answer("لقد حصلت على هذه المكافأة بالفعل.", show_alert=True); return
+            await query.answer("You have already claimed this reward.", show_alert=True); return
         
         cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
         cursor.execute("INSERT INTO user_channel_rewards (telegram_user_id, channel_id) VALUES (?, ?)", (user_id, channel_id))
-    await query.answer(get_text('reward_success').format(points=points), show_alert=True)
+    await query.answer(get_text('reward_success', lang_code).format(points=points), show_alert=True)
     await earn_points_command(update, context)
 
-@check_banned
+@log_activity
 async def redeem_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(get_text('redeem_prompt'))
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('redeem_prompt', lang_code))
     return REDEEM_CODE_INPUT
 
 async def redeem_code_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    lang_code = get_user_lang(user_id)
     code = update.message.text
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         code_data = cursor.execute("SELECT points, max_uses, current_uses FROM redeem_codes WHERE code = ?", (code,)).fetchone()
         
         if not code_data:
-            await update.message.reply_text(get_text('redeem_invalid_code')); return ConversationHandler.END
+            await update.message.reply_text(get_text('redeem_invalid_code', lang_code)); return ConversationHandler.END
         
         points, max_uses, current_uses = code_data
         if current_uses >= max_uses:
-            await update.message.reply_text(get_text('redeem_limit_reached')); return ConversationHandler.END
+            await update.message.reply_text(get_text('redeem_limit_reached', lang_code)); return ConversationHandler.END
         
         if cursor.execute("SELECT 1 FROM redeemed_users WHERE code = ? AND telegram_user_id = ?", (code, user_id)).fetchone():
-            await update.message.reply_text(get_text('redeem_already_used')); return ConversationHandler.END
+            await update.message.reply_text(get_text('redeem_already_used', lang_code)); return ConversationHandler.END
             
         cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
         cursor.execute("UPDATE redeem_codes SET current_uses = current_uses + 1 WHERE code = ?", (code,))
         cursor.execute("INSERT INTO redeemed_users (code, telegram_user_id) VALUES (?, ?)", (code, user_id))
         new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-        await update.message.reply_text(get_text('redeem_success').format(points=points, new_balance=new_balance), parse_mode=ParseMode.HTML)
+        await update.message.reply_text(get_text('redeem_success', lang_code).format(points=points, new_balance=new_balance), parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
 # =================================================================================
@@ -648,6 +726,7 @@ async def redeem_code_received(update: Update, context: ContextTypes.DEFAULT_TYP
 async def verify_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
     user_id = query.from_user.id
+    lang_code = get_user_lang(user_id)
 
     if await check_membership(user_id, context):
         with sqlite3.connect(DB_FILE) as conn:
@@ -656,15 +735,16 @@ async def verify_join_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             if not claimed:
                 cursor.execute("UPDATE users SET points = points + ?, join_bonus_claimed = 1 WHERE telegram_user_id = ?", (JOIN_BONUS, user_id))
                 conn.commit()
-                await query.answer(get_text('join_bonus_awarded').format(bonus=JOIN_BONUS), show_alert=True)
+                await query.answer(get_text('join_bonus_awarded', lang_code).format(bonus=JOIN_BONUS), show_alert=True)
         
-        await query.edit_message_text(get_text('force_join_success'))
+        await query.edit_message_text(get_text('force_join_success', lang_code))
         await start(update, context, from_callback=True)
     else:
-        await query.answer(get_text('force_join_fail'), show_alert=True)
+        await query.answer(get_text('force_join_fail', lang_code), show_alert=True)
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(get_text('operation_cancelled'))
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('operation_cancelled', lang_code))
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -680,9 +760,6 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # --- FIX for ConversationHandler Warnings ---
-    # By setting per_message=True, each button click is handled correctly.
-    # allow_reentry=True is good practice for menu-based conversations.
     conv_defaults = {'per_message': True, 'allow_reentry': True}
 
     # Conversation Handlers
@@ -719,20 +796,8 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel_conversation)],
         **conv_defaults
     )
-    ban_user_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(ban_user_start, pattern='^admin_ban_user_start$')],
-        states={BAN_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, ban_user_id_received)]},
-        fallbacks=[CommandHandler('cancel', cancel_conversation)],
-        **conv_defaults
-    )
-    unban_user_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(unban_user_start, pattern='^admin_unban_user_start$')],
-        states={UNBAN_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, unban_user_id_received)]},
-        fallbacks=[CommandHandler('cancel', cancel_conversation)],
-        **conv_defaults
-    )
     redeem_code_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(f"^{get_text('redeem_code_button')}$"), redeem_code_start)],
+        entry_points=[MessageHandler(filters.Regex(f"^{get_text('redeem_code_button', 'ar')}$") | filters.Regex(f"^{get_text('redeem_code_button', 'en')}$"), redeem_code_start)],
         states={REDEEM_CODE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, redeem_code_received)]},
         fallbacks=[CommandHandler('cancel', cancel_conversation)]
     )
@@ -740,28 +805,28 @@ def main():
     # Add command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_panel))
+    app.add_handler(CommandHandler("language", language_command))
 
     # Add conversation handlers
     app.add_handler(add_channel_conv)
     app.add_handler(create_code_conv)
-    app.add_handler(ban_user_conv)
-    app.add_handler(unban_user_conv)
     app.add_handler(redeem_code_conv)
     app.add_handler(edit_info_conv)
 
     # Add message handlers for main menu buttons
-    app.add_handler(MessageHandler(filters.Regex(f"^{get_text('get_ssh_button')}$"), get_ssh))
-    app.add_handler(MessageHandler(filters.Regex(f"^{get_text('my_account_button')}$"), my_account))
-    app.add_handler(MessageHandler(filters.Regex(f"^{get_text('balance_button')}$"), balance_command))
-    app.add_handler(MessageHandler(filters.Regex(f"^{get_text('daily_button')}$"), daily_command))
-    app.add_handler(MessageHandler(filters.Regex(f"^{get_text('earn_points_button')}$"), earn_points_command))
-    app.add_handler(MessageHandler(filters.Regex(f"^{get_text('contact_admin_button')}$"), contact_admin_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'en'))}$"), get_ssh))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('my_account_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('my_account_button', 'en'))}$"), my_account))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('balance_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('balance_button', 'en'))}$"), balance_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('daily_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('daily_button', 'en'))}$"), daily_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('earn_points_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('earn_points_button', 'en'))}$"), earn_points_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('contact_admin_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('contact_admin_button', 'en'))}$"), contact_admin_command))
 
     # Add callback query handlers
     app.add_handler(CallbackQueryHandler(verify_join_callback, pattern='^verify_join$'))
     app.add_handler(CallbackQueryHandler(verify_reward_callback, pattern='^verify_r_'))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern='^admin_'))
     app.add_handler(CallbackQueryHandler(remove_channel_confirm, pattern='^remove_c_'))
+    app.add_handler(CallbackQueryHandler(set_language_callback, pattern='^set_lang_'))
     app.add_handler(CallbackQueryHandler(lambda u,c: u.callback_query.answer(), pattern='^dummy$'))
 
     print("Bot is running with FULL features...")
