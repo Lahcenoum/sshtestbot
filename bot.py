@@ -70,7 +70,7 @@ TEXTS = {
         "daily_bonus_already_claimed": "ℹ️ لقد حصلت بالفعل على مكافأتك اليومية. تعال غدًا!",
         "no_accounts_found": "ℹ️ لم يتم العثور على أي حسابات نشطة مرتبطة بك.",
         "your_accounts": "<b>👤 حساباتك النشطة:</b>",
-        "account_details": "🏷️ <b>اسم المستخدم:</b> <code>{username}</code>\n🔑 <b>كلمة المرور:</b> <code>{password}</code>\n🗓️ <b>تاريخ انتهاء الصلاحية:</b> <code>{expiry}</code>",
+        "account_details_full": "🏷️ <b>اسم المستخدم:</b> <code>{username}</code>\n🔑 <b>كلمة المرور:</b> <code>{password}</code>\n🗓️ <b>تاريخ انتهاء الصلاحية:</b> <code>{expiry}</code>\n\n<b>Hostname:</b> <code>{hostname}</code>\n<b>Websocket Ports:</b> <code>{ws_ports}</code>\n<b>SSL Port:</b> <code>{ssl_port}</code>\n<b>UDPCUSTOM Port:</b> <code>{udpcustom_port}</code>\n\n<b>Payload:</b>\n<pre><code>{payload}</code></pre>",
         "rewards_header": "انضم إلى هذه القنوات والمجموعات واحصل على نقاط!",
         "verify_join_button": "✅ تحقق من الانضمام",
         "reward_success": "🎉 رائع! لقد حصلت على {points} نقطة.",
@@ -141,7 +141,7 @@ TEXTS = {
         "daily_bonus_already_claimed": "ℹ️ You have already claimed your daily bonus. Come back tomorrow!",
         "no_accounts_found": "ℹ️ No active accounts associated with you were found.",
         "your_accounts": "<b>👤 Your Active Accounts:</b>",
-        "account_details": "🏷️ <b>Username:</b> <code>{username}</code>\n🔑 <b>Password:</b> <code>{password}</code>\n🗓️ <b>Expiration Date:</b> <code>{expiry}</code>",
+        "account_details_full": "🏷️ <b>Username:</b> <code>{username}</code>\n🔑 <b>Password:</b> <code>{password}</code>\n🗓️ <b>Expiration Date:</b> <code>{expiry}</code>\n\n<b>Hostname:</b> <code>{hostname}</code>\n<b>Websocket Ports:</b> <code>{ws_ports}</code>\n<b>SSL Port:</b> <code>{ssl_port}</code>\n<b>UDPCUSTOM Port:</b> <code>{udpcustom_port}</code>\n\n<b>Payload:</b>\n<pre><code>{payload}</code></pre>",
         "rewards_header": "Join these channels and groups to get points!",
         "verify_join_button": "✅ Verify Join",
         "reward_success": "🎉 Great! You've received {points} points.",
@@ -375,15 +375,37 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_text('no_accounts_found', lang_code)); return
 
     response_parts = [get_text('your_accounts', lang_code)]
+    
+    hostname = get_connection_setting("hostname")
+    ws_ports = get_connection_setting("ws_ports")
+    ssl_port = get_connection_setting("ssl_port")
+    udpcustom_port = get_connection_setting("udpcustom_port")
+    payload = get_connection_setting("payload")
+
     for username, password in accounts:
         try:
             expiry_output = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True, stderr=subprocess.DEVNULL)
             expiry_line = next((line for line in expiry_output.split('\n') if "Account expires" in line), None)
             expiry = expiry_line.split(':', 1)[1].strip() if expiry_line else "N/A"
-            response_parts.append(get_text('account_details', lang_code).format(username=html.escape(username), password=html.escape(password), expiry=html.escape(expiry)))
-        except Exception as e: print(f"Could not get expiry for {username}: {e}")
-    
-    await update.message.reply_text("\n\n".join(response_parts), parse_mode=ParseMode.HTML)
+            
+            account_info = get_text('account_details_full', lang_code).format(
+                username=html.escape(username), 
+                password=html.escape(password), 
+                expiry=html.escape(expiry),
+                hostname=html.escape(hostname),
+                ws_ports=html.escape(ws_ports),
+                ssl_port=html.escape(ssl_port),
+                udpcustom_port=html.escape(udpcustom_port),
+                payload=html.escape(payload)
+            )
+            response_parts.append(account_info)
+
+        except Exception as e: 
+            print(f"Could not get expiry for {username}: {e}")
+            response_parts.append(f"Could not retrieve details for user <code>{html.escape(username)}</code>.")
+
+    full_response = "\n\n---\n\n".join(response_parts)
+    await update.message.reply_text(full_response, parse_mode=ParseMode.HTML)
 
 @log_activity
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -483,6 +505,17 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     data = query.data
     lang_code = get_user_lang(user_id)
     
+    entry_points = {
+        'admin_add_channel_start': (ADD_CHANNEL_NAME, get_text('admin_add_channel_name_prompt', lang_code)),
+        'admin_create_code_start': (CREATE_CODE_NAME, get_text('admin_create_code_prompt_name', lang_code)),
+        'admin_edit_connection_info': (EDIT_HOSTNAME, get_text('admin_edit_hostname_prompt', lang_code)),
+    }
+
+    if data in entry_points:
+        state, text = entry_points[data]
+        await query.edit_message_text(text)
+        return state
+
     if data == 'admin_panel_main':
         keyboard = [
             [InlineKeyboardButton(get_text('admin_manage_rewards_button', lang_code), callback_data='admin_manage_rewards')],
@@ -506,12 +539,6 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(get_text('admin_manage_codes_button', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
     elif data == 'admin_user_stats':
         await show_user_stats(update, context)
-
-async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; await query.answer()
-    lang_code = get_user_lang(query.from_user.id)
-    await query.edit_message_text(get_text('admin_add_channel_name_prompt', lang_code))
-    return ADD_CHANNEL_NAME
 
 async def add_channel_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['channel_name'] = update.message.text
@@ -568,12 +595,6 @@ async def remove_channel_confirm(update: Update, context: ContextTypes.DEFAULT_T
     await query.edit_message_text(get_text('admin_channel_removed_success', lang_code))
     await remove_channel_start(update, context)
 
-async def create_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; await query.answer()
-    lang_code = get_user_lang(query.from_user.id)
-    await query.edit_message_text(get_text('admin_create_code_prompt_name', lang_code))
-    return CREATE_CODE_NAME
-
 async def receive_code_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['code_name'] = update.message.text
     lang_code = get_user_lang(update.effective_user.id)
@@ -602,12 +623,6 @@ async def receive_code_uses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     except ValueError:
         await update.message.reply_text(get_text('invalid_input', lang_code)); return CREATE_CODE_USES
-
-async def edit_connection_info_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; await query.answer()
-    lang_code = get_user_lang(query.from_user.id)
-    await query.edit_message_text(get_text('admin_edit_hostname_prompt', lang_code))
-    return EDIT_HOSTNAME
 
 async def edit_hostname_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['hostname'] = update.message.text
@@ -805,7 +820,7 @@ def main():
         **conv_defaults
     )
     create_code_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(create_code_start, pattern='^admin_create_code_start$')],
+        entry_points=[CallbackQueryHandler(admin_panel_callback, pattern='^admin_create_code_start$')],
         states={
             CREATE_CODE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_name)],
             CREATE_CODE_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_points)],
