@@ -565,7 +565,8 @@ async def remove_channel_confirm(update: Update, context: ContextTypes.DEFAULT_T
         conn.execute("DELETE FROM reward_channels WHERE channel_id = ?", (channel_id,))
         conn.execute("DELETE FROM user_channel_rewards WHERE channel_id = ?", (channel_id,))
     await query.edit_message_text(get_text('admin_channel_removed_success', lang_code))
-    await admin_panel_callback(update, context) 
+    # After removing, show the updated list
+    await remove_channel_start(update, context)
 
 async def create_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
@@ -595,7 +596,7 @@ async def receive_code_uses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = context.user_data['code_name']
         points = context.user_data['code_points']
         with sqlite3.connect(DB_FILE) as conn:
-            conn.execute("INSERT OR REPLACE INTO redeem_codes (code, points, max_uses) VALUES (?, ?, ?)", (name, points, uses))
+            conn.execute("INSERT OR REPLACE INTO redeem_codes (code, points, max_uses, current_uses) VALUES (?, ?, ?, 0)", (name, points, uses))
         await update.message.reply_text(get_text('admin_code_created', lang_code).format(code=name, points=points, uses=uses), parse_mode=ParseMode.HTML)
         context.user_data.clear()
         return ConversationHandler.END
@@ -817,6 +818,7 @@ def main():
     app.add_handler(edit_info_conv)
 
     # Add message handlers for main menu buttons
+    # FIX: Use re.escape to handle special characters in button text (like 💳)
     app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'en'))}$") & filters.ChatType.PRIVATE, get_ssh))
     app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('my_account_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('my_account_button', 'en'))}$") & filters.ChatType.PRIVATE, my_account))
     app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('balance_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('balance_button', 'en'))}$") & filters.ChatType.PRIVATE, balance_command))
