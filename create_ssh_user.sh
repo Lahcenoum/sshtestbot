@@ -1,36 +1,55 @@
 #!/bin/bash
 
-# التحقق من عدد الوسائط
-if [ $# -ne 3 ]; then
-  echo "❌ استخدام غير صحيح: create_ssh_user.sh <اسم_المستخدم> <كلمة_المرور> <مدة_الصلاحية_بالأيام>"
-  exit 1
+# ========================================================================
+#  النسخة النهائية والمحسنة من سكريبت إنشاء المستخدمين
+# ========================================================================
+
+# --- التحقق من المدخلات ---
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <username> <password> <expiry_days>"
+    exit 1
 fi
 
-USERNAME="$1"
-PASSWORD="$2"
-EXPIRY_DAYS="$3"
+USERNAME=$1
+PASSWORD=$2
+EXPIRY_DAYS=$3
 
-# التحقق من وجود المستخدم مسبقًا
+# --- التحقق من وجود المستخدم ---
 if id "$USERNAME" &>/dev/null; then
-  echo "❌ المستخدم '$USERNAME' موجود مسبقًا. لا يمكن تكرار الحساب."
-  exit 1
+    echo "Error: User '$USERNAME' already exists."
+    exit 1
 fi
 
-# إنشاء المستخدم بدون مجلد home، shell مقفل، وصلاحية مؤقتة
-useradd -e "$(date -d "+$EXPIRY_DAYS days" +%Y-%m-%d)" -M -s /usr/sbin/nologin "$USERNAME"
+# --- حساب تاريخ الانتهاء ---
+EXPIRY_DATE=$(date -d "+$EXPIRY_DAYS days" +%Y-%m-%d)
 
-# تعيين كلمة المرور
-echo -e "$PASSWORD\n$PASSWORD" | passwd "$USERNAME" &>/dev/null
+# --- إنشاء المستخدم (بدون تعيين كلمة مرور مبدئيًا) ---
+useradd "$USERNAME" -m -e "$EXPIRY_DATE" -s /bin/bash
 
-# جلب عنوان IP العام
-IP=$(curl -s ifconfig.me || echo "IP-غير-معروف")
-PORT=22
-EXP_DATE=$(chage -l "$USERNAME" | grep "Account expires" | cut -d: -f2 | xargs)
+# --- التحقق من نجاح إنشاء المستخدم ---
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to add user '$USERNAME'."
+    exit 1
+fi
 
-# طباعة بيانات الحساب
-echo "📄 معلومات الحساب:"
-echo "👤 المستخدم: $USERNAME"
-echo "🔑 كلمة المرور: $PASSWORD"
-echo "📡 الهوست: $IP"
-echo "🚪 المنفذ: $PORT"
-echo "📅 الانتهاء: $EXP_DATE"
+# --- تعيين كلمة المرور باستخدام chpasswd (طريقة أكثر موثوقية) ---
+echo "$USERNAME:$PASSWORD" | sudo chpasswd
+
+# --- التحقق من نجاح تعيين كلمة المرور ---
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to set password for user '$USERNAME'."
+    # في حالة الفشل، قم بحذف المستخدم الذي تم إنشاؤه للتو
+    userdel -r "$USERNAME"
+    exit 1
+fi
+
+# --- إخراج التفاصيل لكي يلتقطها البوت ---
+# استبدل "YOUR_SERVER_IP" بالآي بي الفعلي لسيرفرك
+# يمكنك الحصول عليه بالأمر: curl -s ifconfig.me
+SERVER_IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
+echo "Host/IP: ${SERVER_IP}"
+echo "Username: ${USERNAME}"
+echo "Password: ${PASSWORD}"
+echo "Expires on: ${EXPIRY_DATE}"
+
+exit 0
