@@ -2,22 +2,28 @@ import sys
 import subprocess
 import random
 import string
-import re  # <-- إضافة مهمة
+import re
+import logging
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
-# سيتم استبدال هذا السطر تلقائياً بواسطة سكريبت التثبيت
+# سيتم استبدال هذا السطر تلقائياً بواسطة سكربت التثبيت
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 ACCOUNT_EXPIRY_DAYS = 2
 
-# --- بداية الدالة الجديدة ---
+# إعداد السجلات
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(levelname)s] %(asctime)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
 def escape_markdown_v2(text: str) -> str:
     """تهريب الأحرف الخاصة لتنسيق MarkdownV2 الخاص بتليجرام."""
     escape_chars = r'\_*[]()~`>#+-=|{}.!'
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
-# --- نهاية الدالة الجديدة ---
 
 def generate_password():
     """تنشئ كلمة مرور عشوائية."""
@@ -49,35 +55,47 @@ async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
             timeout=30,
             check=True
         )
-        result_details = process.stdout
-        
-        # --- بداية التعديل ---
-        # نقوم بتهريب المخرجات قبل إرسالها
+
+        result_details = process.stdout.strip()
+        if not result_details:
+            result_details = process.stderr.strip()
+
         safe_details = escape_markdown_v2(result_details)
-        # --- نهاية التعديل ---
 
         response_message = (
             f"✅ تم إنشاء حسابك بنجاح!\n\n"
-            f"**البيانات:**\n```\n{safe_details}\n```\n\n"  # نستخدم المتغير الآمن هنا
+            f"**البيانات:**\n```\n{safe_details}\n```\n\n"
             f"⚠️ **ملاحظة**: سيتم حذف الحساب تلقائيًا بعد **{ACCOUNT_EXPIRY_DAYS} أيام**."
         )
+
         await update.message.reply_text(response_message, parse_mode='MarkdownV2')
+        logging.info(f"تم إنشاء حساب SSH للمستخدم {username}")
+
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.strip() if e.stderr else str(e)
+        logging.error(f"[SCRIPT ERROR] {error_msg}")
+        await update.message.reply_text("❌ فشل في تنفيذ السكربت. تحقق من صلاحيات sudo أو من سجل السيرفر.")
+
+    except subprocess.TimeoutExpired:
+        logging.error("⏱️ السكربت استغرق وقتًا طويلاً وتجاوز المهلة.")
+        await update.message.reply_text("❌ فشل في إنشاء الحساب بسبب انتهاء المهلة الزمنية.")
 
     except Exception as e:
-        print(f"An error occurred: {e}")
-        await update.message.reply_text("❌ حدث خطأ أثناء إنشاء الحساب. قد يكون لديك حساب بالفعل.")
+        logging.exception("🚨 حدث خطأ غير متوقع:")
+        await update.message.reply_text("❌ حدث خطأ غير متوقع أثناء إنشاء الحساب. حاول لاحقًا.")
 
 def main():
     """الدالة الرئيسية لتشغيل البوت."""
+    if TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+        logging.critical("❌ لم يتم تعيين التوكن. يرجى تشغيل سكربت التثبيت أولاً.")
+        sys.exit(1)
+
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^💳 طلب حساب SSH جديد$"), request_account))
-    print("Bot is running...")
+
+    logging.info("✅ البوت يعمل الآن في وضع الانتظار...")
     app.run_polling()
 
 if __name__ == '__main__':
-    # تأكد من أن التوكن تم تعيينه (هذه نسخة للبوت، التوكن الفعلي يأتي من سكربت التثبيت)
-    if TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
-        print("Error: Bot token is not set. Please run the installation script.")
-        sys.exit(1)
     main()
