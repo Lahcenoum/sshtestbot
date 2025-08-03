@@ -1,79 +1,68 @@
-import sys
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import subprocess
 import random
 import string
-import traceback
-import html  # Import the html library for escaping
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
-from telegram.constants import ParseMode # Import ParseMode for HTML
+import os
+from datetime import datetime, timedelta
 
-# The token is replaced by the installation script
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN" 
-
+BOT_TOKEN = 'YOUR_BOT_TOKEN_HERE'
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
-ACCOUNT_EXPIRY_DAYS = 2
+LOG_FILE = '/var/log/ssh_user_creations.log'
+
+def generate_username(bot_username):
+    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+    return f"{bot_username}_{suffix}"
 
 def generate_password():
-    # Creates a random password.
-    return "ssh-" + ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+    suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=2))
+    return f"sshdotbot{suffix}"
+
+def can_create(user_id):
+    now = datetime.now()
+    count = 0
+    if not os.path.exists(LOG_FILE):
+        return True
+    with open(LOG_FILE, 'r') as f:
+        for line in f:
+            log_user_id, log_time = line.strip().split(',')
+            if log_user_id == str(user_id):
+                log_time = datetime.strptime(log_time, "%Y-%m-%d %H:%M:%S")
+                if now - log_time < timedelta(hours=24):
+                    count += 1
+    return count < 2
+
+def log_creation(user_id):
+    with open(LOG_FILE, 'a') as f:
+        f.write(f"{user_id},{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Displays a welcome message and the request button.
-    keyboard = [[KeyboardButton("💳 طلب حساب SSH جديد")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text(
-        "أهلاً بك!\n\nاضغط على الزر أدناه لإنشاء حساب SSH جديد.",
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text("مرحبًا! أرسل /get_ssh للحصول على حساب SSH مجاني لمدة يومين.")
 
-async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Calls the script to create an SSH account and sends the details.
-    await update.message.reply_text("⏳ جاري إنشاء الحساب...")
+async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if not can_create(user_id):
+        await update.message.reply_text("❌ لقد أنشأت حسابين خلال آخر 24 ساعة. حاول لاحقًا.")
+        return
+
+    bot_username = context.bot.username.lower().replace("bot", "")
+    username = generate_username(bot_username)
+    password = generate_password()
+
     try:
-        user_id = update.effective_user.id
-        username = f"tguser{user_id}"
-        password = generate_password()
-        command_to_run = ["sudo", SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
+        result = subprocess.check_output([SCRIPT_PATH, username, password], stderr=subprocess.STDOUT)
+        log_creation(user_id)
+        await update.message.reply_text(f"✅ تم إنشاء الحساب:
 
-        process = subprocess.run(
-            command_to_run,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=True
-        )
-        result_details = process.stdout
-        
-        # Escape the details for HTML to be safe
-        safe_details = html.escape(result_details.strip())
+{result.decode()}")
+    except subprocess.CalledProcessError as e:
+        await update.message.reply_text(f"❌ حدث خطأ أثناء إنشاء الحساب:
 
-        # --- THE FIX: Using HTML formatting instead of MarkdownV2 ---
-        response_message = (
-            f"<b>✅ تم إنشاء حسابك بنجاح!</b>\n\n"
-            f"<b>البيانات:</b>\n<pre><code>{safe_details}</code></pre>\n\n"
-            f"⚠️ <b>ملاحظة</b>: سيتم حذف الحساب تلقائيًا بعد <b>{ACCOUNT_EXPIRY_DAYS} أيام</b>."
-        )
-        
-        await update.message.reply_text(response_message, parse_mode=ParseMode.HTML)
-
-    except Exception as e:
-        # Fallback for any other errors
-        print("--- AN UNEXPECTED ERROR OCCURRED ---")
-        traceback.print_exc()
-        await update.message.reply_text("❌ حدث خطأ أثناء إنشاء الحساب. قد يكون لديك حساب بالفعل.")
-
-def main():
-    # Main function to run the bot.
-    if "YOUR_TELEGRAM_BOT_TOKEN" in TOKEN:
-        print("FATAL ERROR: Bot token is not set in the bot.py file.")
-        sys.exit(1)
-    
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^💳 طلب حساب SSH جديد$"), request_account))
-    print("Bot is running...")
-    app.run_polling()
+{e.output.decode()}")
 
 if __name__ == '__main__':
-    main()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("get_ssh", get_ssh))
+    app.run_polling()
