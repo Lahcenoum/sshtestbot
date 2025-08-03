@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # ========================================================================
-# سكريبت التثبيت الكامل والنهائي - SSH Telegram Bot
-# - يحل مشكلة البيئة الافتراضية (PEP 668)
-# - يضمن تشغيل المشروع بشكل صحيح ومعزول
+#  سكريبت التثبيت الشامل والكامل - SSH Telegram Bot
+#  - يتضمن الإعداد التلقائي لسكريبت حذف المستخدمين منتهية الصلاحية
 # ========================================================================
 
 # --- إعدادات أساسية ---
@@ -19,78 +18,84 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 echo "=================================================="
-echo "   🔧 بدء التثبيت الكامل لبوت SSH"
+echo "   🔧 بدء التثبيت الكامل والشامل لبوت SSH"
 echo "=================================================="
 
 # الخطوة 0: حذف أي تثبيت قديم لضمان بداية نظيفة
-echo -e "\n[0/8] ✅ حذف أي تثبيت قديم..."
+echo -e "\n[0/9] ✅ حذف أي تثبيت قديم..."
 sudo systemctl stop ssh_bot.service >/dev/null 2>&1
 sudo rm -rf "$PROJECT_DIR"
 
 # 1. تحديث النظام وتثبيت المتطلبات
-echo -e "\n[1/8] ✅ تحديث النظام وتثبيت المتطلبات..."
+echo -e "\n[1/9] ✅ تحديث النظام وتثبيت المتطلبات..."
 apt-get update
 apt-get install -y git python3-venv python3-pip openssl sudo
 
 # 2. استنساخ المشروع
-echo -e "\n[2/8] ✅ استنساخ المشروع من GitHub..."
+echo -e "\n[2/9] ✅ استنساخ المشروع من GitHub..."
 git clone "$GIT_REPO_URL" "$PROJECT_DIR"
 cd "$PROJECT_DIR" || exit 1
 
 # 3. إدخال التوكن
-echo -e "\n[3/8] ✅ إعداد توكن البوت..."
+echo -e "\n[3/9] ✅ إعداد توكن البوت..."
 read -p "📥 أدخل توكن البوت: " BOT_TOKEN
 if [ -z "$BOT_TOKEN" ]; then echo "❌ لم يتم إدخال التوكن."; exit 1; fi
-# استخدام sed لتحديث التوكن في bot.py
 sed -i 's/^TOKEN = "YOUR_TELEGRAM_BOT_TOKEN".*/TOKEN = "'"$BOT_TOKEN"'"/' "$PROJECT_DIR/bot.py"
 
 # 4. إعداد سكربت إنشاء المستخدم
-echo -e "\n[4/8] ✅ إعداد سكربت إنشاء حسابات SSH..."
+echo -e "\n[4/9] ✅ إعداد سكربت إنشاء حسابات SSH..."
 read -p "📥 أدخل عنوان IP الخاص بسيرفرك: " SERVER_IP
 if [ -z "$SERVER_IP" ]; then echo "❌ لم يتم إدخال الآي بي."; exit 1; fi
 
-cat > /usr/local/bin/create_ssh_user.sh << EOL
+# التأكد من وجود create_ssh_user.sh في المستودع ونقله
+if [ -f "create_ssh_user.sh" ]; then
+    mv create_ssh_user.sh /usr/local/bin/
+else
+    # إذا لم يكن الملف موجودًا، قم بإنشائه
+    cat > /usr/local/bin/create_ssh_user.sh << EOL
 #!/bin/bash
-if [ "\$#" -ne 3 ]; then
-    echo "Usage: \$0 <username> <password> <expiry_days>"
-    exit 1
-fi
-USERNAME=\$1
-PASSWORD=\$2
-EXPIRY_DAYS=\$3
-if id "\$USERNAME" &>/dev/null; then
-    echo "Error: User '\$USERNAME' already exists."
-    exit 1
-fi
+if [ "\$#" -ne 3 ]; then echo "Usage: \$0 <username> <password> <expiry_days>"; exit 1; fi
+USERNAME=\$1; PASSWORD=\$2; EXPIRY_DAYS=\$3
+if id "\$USERNAME" &>/dev/null; then echo "Error: User '\$USERNAME' already exists."; exit 1; fi
 EXPIRY_DATE=\$(date -d "+\$EXPIRY_DAYS days" +%Y-%m-%d)
 useradd "\$USERNAME" -m -e "\$EXPIRY_DATE" -s /bin/bash -p "\$(openssl passwd -1 "\$PASSWORD")"
 if [ \$? -eq 0 ]; then
-    echo "Host/IP: ${SERVER_IP}"
-    echo "Username: \$USERNAME"
-    echo "Password: \$PASSWORD"
-    echo "Expires on: \$EXPIRY_DATE"
+    echo "Host/IP: ${SERVER_IP}"; echo "Username: \$USERNAME"; echo "Password: \$PASSWORD"; echo "Expires on: \$EXPIRY_DATE"
 else
-    echo "Error: Failed to create user '\$USERNAME'."
-    exit 1
+    echo "Error: Failed to create user '\$USERNAME'."; exit 1
 fi
 exit 0
 EOL
+fi
 chmod +x /usr/local/bin/create_ssh_user.sh
 
-# 5. إعداد بيئة بايثون (الطريقة الصحيحة التي تحل المشكلة)
-echo -e "\n[5/8] ✅ إعداد البيئة الافتراضية وتثبيت المكتبات..."
+# 5. إعداد سكربت الحذف التلقائي
+echo -e "\n[5/9] ✅ إعداد سكربت الحذف التلقائي للمستخدمين..."
+if [ -f "delete_expired_users.sh" ]; then
+    mv delete_expired_users.sh /usr/local/bin/
+    chmod +x /usr/local/bin/delete_expired_users.sh
+    # إضافة المهمة إلى cron (سيتم تشغيلها كل يوم في منتصف الليل)
+    (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/delete_expired_users.sh" ; echo "0 0 * * * /usr/local/bin/delete_expired_users.sh") | crontab -
+    echo "-> تم إعداد مهمة الحذف التلقائي بنجاح."
+else
+    echo "-> تحذير: لم يتم العثور على ملف 'delete_expired_users.sh' في المستودع. تم تخطي هذه الخطوة."
+fi
+
+# 6. إعداد بيئة بايثون
+echo -e "\n[6/9] ✅ إعداد البيئة الافتراضية وتثبيت المكتبات..."
 python3 -m venv venv
-# --- بداية الحل ---
-# هذا الجزء هو الذي يحل مشكلة PEP 668 بشكل نهائي
 (
   source venv/bin/activate
   pip install --upgrade pip
-  pip install python-telegram-bot
+  if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt
+  else
+    pip install python-telegram-bot
+  fi
 )
-# --- نهاية الحل ---
 
-# 6. إعداد خدمة systemd
-echo -e "\n[6/8] ✅ إعداد الخدمة الدائمة systemd..."
+# 7. إعداد خدمة systemd
+echo -e "\n[7/9] ✅ إعداد الخدمة الدائمة systemd..."
 cat > /etc/systemd/system/ssh_bot.service << EOL
 [Unit]
 Description=Telegram SSH Bot Service
@@ -108,14 +113,14 @@ RestartSec=5
 WantedBy=multi-user.target
 EOL
 
-# 7. تشغيل الخدمة
-echo -e "\n[7/8] ✅ تمكين وتشغيل الخدمة..."
+# 8. تشغيل الخدمة
+echo -e "\n[8/9] ✅ تمكين وتشغيل الخدمة..."
 systemctl daemon-reload
 systemctl enable ssh_bot.service
 systemctl restart ssh_bot.service
 
-# 8. نهاية التثبيت
-echo -e "\n[8/8] ✅ تم التثبيت بنجاح!"
+# 9. نهاية التثبيت
+echo -e "\n[9/9] ✅ تم التثبيت بنجاح!"
 echo "=================================================="
 echo "📌 لمراقبة الخدمة: systemctl status ssh_bot.service"
 echo "📌 لإعادة التشغيل: systemctl restart ssh_bot.service"
