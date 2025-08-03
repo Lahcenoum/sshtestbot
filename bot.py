@@ -2,7 +2,6 @@ import sys
 import subprocess
 import random
 import string
-import re
 import traceback
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
@@ -14,10 +13,7 @@ TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 ACCOUNT_EXPIRY_DAYS = 2
 
-def escape_markdown_v2(text: str) -> str:
-    # Escapes special characters for Telegram's MarkdownV2 format.
-    escape_chars = r'\_*[]()~`>#+-=|{}.!'
-    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+# The escape function has been removed as it was causing the formatting error.
 
 def generate_password():
     # Creates a random password.
@@ -50,18 +46,18 @@ async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         result_details = process.stdout
         
-        safe_details = escape_markdown_v2(result_details)
-
+        # We now send the raw, unescaped text inside the code block.
+        # The .strip() method removes any unwanted leading/trailing whitespace.
         response_message = (
             f"✅ تم إنشاء حسابك بنجاح!\n\n"
-            f"**البيانات:**\n```\n{safe_details}\n```\n\n"
+            f"**البيانات:**\n```\n{result_details.strip()}\n```\n\n"
             f"⚠️ **ملاحظة**: سيتم حذف الحساب تلقائيًا بعد **{ACCOUNT_EXPIRY_DAYS} أيام**."
         )
         
         await update.message.reply_text(response_message, parse_mode='MarkdownV2')
 
     except BadRequest as e:
-        # Fallback for formatting errors
+        # This block is now less likely to be triggered.
         print(f"--- Telegram Formatting Error: {e} ---")
         await update.message.reply_text(f"✅ تم إنشاء حسابك بنجاح، ولكن فشل عرض التفاصيل بشكل منسق. إليك البيانات:\n\n{result_details}")
     except Exception as e:
