@@ -1,65 +1,36 @@
-import sys
-import subprocess
-import random
-import string
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+#!/bin/bash
 
-# سيتم استبدال هذا السطر تلقائياً بواسطة سكريبت التثبيت
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+# التحقق من عدد الوسائط
+if [ $# -ne 3 ]; then
+  echo "❌ استخدام غير صحيح: create_ssh_user.sh <اسم_المستخدم> <كلمة_المرور> <مدة_الصلاحية_بالأيام>"
+  exit 1
+fi
 
-SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
-ACCOUNT_EXPIRY_DAYS = 2
+USERNAME="$1"
+PASSWORD="$2"
+EXPIRY_DAYS="$3"
 
-def generate_password():
-    """تنشئ كلمة مرور عشوائية."""
-    return "ssh-" + ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+# التحقق من وجود المستخدم مسبقًا
+if id "$USERNAME" &>/dev/null; then
+  echo "❌ المستخدم '$USERNAME' موجود مسبقًا. لا يمكن تكرار الحساب."
+  exit 1
+fi
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تعرض رسالة ترحيب وزر الطلب."""
-    keyboard = [[KeyboardButton("💳 طلب حساب SSH جديد")]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text(
-        "أهلاً بك!\n\nاضغط على الزر أدناه لإنشاء حساب SSH جديد.",
-        reply_markup=reply_markup
-    )
+# إنشاء المستخدم بدون مجلد home، shell مقفل، وصلاحية مؤقتة
+useradd -e "$(date -d "+$EXPIRY_DAYS days" +%Y-%m-%d)" -M -s /usr/sbin/nologin "$USERNAME"
 
-async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تستدعي السكريبت لإنشاء حساب SSH."""
-    user_id = update.effective_user.id
-    username = f"tguser{user_id}"
-    password = generate_password()
-    command_to_run = ["sudo", SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
+# تعيين كلمة المرور
+echo -e "$PASSWORD\n$PASSWORD" | passwd "$USERNAME" &>/dev/null
 
-    await update.message.reply_text("⏳ جاري إنشاء حسابك، يرجى الانتظار...")
+# جلب عنوان IP العام
+IP=$(curl -s ifconfig.me || echo "IP-غير-معروف")
+PORT=22
+EXP_DATE=$(chage -l "$USERNAME" | grep "Account expires" | cut -d: -f2 | xargs)
 
-    try:
-        process = subprocess.run(
-            command_to_run,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=True
-        )
-        result_details = process.stdout
-        response_message = (
-            f"✅ تم إنشاء حسابك بنجاح!\n\n"
-            f"**البيانات:**\n```\n{result_details}\n```\n\n"
-            f"⚠️ **ملاحظة**: سيتم حذف الحساب تلقائيًا بعد **{ACCOUNT_EXPIRY_DAYS} أيام**."
-        )
-        await update.message.reply_text(response_message, parse_mode='MarkdownV2')
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        await update.message.reply_text("❌ حدث خطأ أثناء إنشاء الحساب. قد يكون لديك حساب بالفعل.")
-
-def main():
-    """الدالة الرئيسية لتشغيل البوت."""
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("^💳 طلب حساب SSH جديد$"), request_account))
-    print("Bot is running...")
-    app.run_polling()
-
-if __name__ == '__main__':
-    main()
+# طباعة بيانات الحساب
+echo "📄 معلومات الحساب:"
+echo "👤 المستخدم: $USERNAME"
+echo "🔑 كلمة المرور: $PASSWORD"
+echo "📡 الهوست: $IP"
+echo "🚪 المنفذ: $PORT"
+echo "📅 الانتهاء: $EXP_DATE"
