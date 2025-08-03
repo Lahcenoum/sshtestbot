@@ -6,7 +6,7 @@
 
 # --- إعدادات أساسية ---
 # ⚠️ غيّر هذا الرابط إلى رابط المستودع الخاص بك على GitHub
-GIT_REPO_URL="https://github.com/username/your-repo.git"
+GIT_REPO_URL="https://github.com/Lahcenoum/sshtestbot.git"
 PROJECT_DIR="/home/ssh_bot"
 
 # --- نهاية قسم الإعدادات ---
