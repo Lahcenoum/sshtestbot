@@ -39,7 +39,7 @@ GROUP_LINK = "https://t.me/dgtliA"
 (ADD_CHANNEL_NAME, ADD_CHANNEL_LINK, ADD_CHANNEL_ID, ADD_CHANNEL_POINTS) = range(4)
 (CREATE_CODE_NAME, CREATE_CODE_POINTS, CREATE_CODE_USES) = range(4, 7)
 (REDEEM_CODE_INPUT,) = range(7, 8)
-(EDIT_HOSTNAME, EDIT_WS_PORTS, EDIT_SSL_PORT, EDIT_UDPCUSTOM, EDIT_ADMIN_CONTACT) = range(8, 13)
+(EDIT_HOSTNAME, EDIT_WS_PORTS, EDIT_SSL_PORT, EDIT_UDPCUSTOM, EDIT_ADMIN_CONTACT, EDIT_PAYLOAD) = range(8, 14)
 
 # =================================================================================
 # 2. دعم اللغات (Localization)
@@ -106,6 +106,7 @@ TEXTS = {
         "admin_edit_ssl_port_prompt": "أرسل بورت SSL الجديد:",
         "admin_edit_udpcustom_prompt": "أرسل بورت UDPCUSTOM الجديد:",
         "admin_edit_contact_prompt": "أرسل معلومات التواصل الجديدة (مثال: @username):",
+        "admin_edit_payload_prompt": "أخيراً، أرسل الـ Payload الجديد:",
         "admin_info_updated_success": "✅ تم تحديث معلومات الاتصال بنجاح.",
         "user_stats_info": "<b>📊 إحصائيات المستخدمين:</b>\n\n- <b>إجمالي المستخدمين:</b> {total_users}\n- <b>النشطون اليوم:</b> {active_today}\n- <b>النشطون أمس:</b> {active_yesterday}\n- <b>المستخدمون الجدد اليوم:</b> {new_today}",
         "choose_language": "اختر لغتك المفضلة:",
@@ -176,6 +177,7 @@ TEXTS = {
         "admin_edit_ssl_port_prompt": "Send the new SSL port:",
         "admin_edit_udpcustom_prompt": "Send the new UDPCUSTOM port:",
         "admin_edit_contact_prompt": "Send the new contact info (e.g., @username):",
+        "admin_edit_payload_prompt": "Finally, send the new Payload:",
         "admin_info_updated_success": "✅ Connection info updated successfully.",
         "user_stats_info": "<b>📊 User Statistics:</b>\n\n- <b>Total Users:</b> {total_users}\n- <b>Active Today:</b> {active_today}\n- <b>Active Yesterday:</b> {active_yesterday}\n- <b>New Today:</b> {new_today}",
         "choose_language": "Choose your preferred language:",
@@ -207,7 +209,8 @@ def init_db():
         
         default_settings = {
             "hostname": "your.hostname.com", "ws_ports": "80, 8880, 8888, 2053",
-            "ssl_port": "443", "udpcustom_port": "7300", "admin_contact": ADMIN_CONTACT_INFO
+            "ssl_port": "443", "udpcustom_port": "7300", "admin_contact": ADMIN_CONTACT_INFO,
+            "payload": "your.default.payload"
         }
         for key, value in default_settings.items():
             cursor.execute("INSERT OR IGNORE INTO connection_settings (key, value) VALUES (?, ?)", (key, value))
@@ -341,6 +344,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws_ports = get_connection_setting("ws_ports")
         ssl_port = get_connection_setting("ssl_port")
         udpcustom_port = get_connection_setting("udpcustom_port")
+        payload = get_connection_setting("payload")
 
         account_info = (
             f"<b>✅ تم إنشاء حسابك بنجاح!</b>\n\n"
@@ -351,6 +355,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<b> SSL Port:</b> <code>{html.escape(ssl_port)}</code>\n"
             f"<b> Websocket SSL Port:</b> <code>{html.escape(ssl_port)}</code>\n"
             f"<b> UDPCUSTOM Port:</b> <code>{html.escape(udpcustom_port)}</code>\n\n"
+            f"<b>Payload:</b>\n<pre><code>{html.escape(payload)}</code></pre>\n\n"
             f"⚠️ <b>ملاحظة</b>: الحساب صالح لمستخدم واحد فقط للحفاظ على السرعة."
         )
         await update.message.reply_text(account_info, parse_mode=ParseMode.HTML)
@@ -478,17 +483,6 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     data = query.data
     lang_code = get_user_lang(user_id)
     
-    entry_points = {
-        'admin_add_channel_start': (ADD_CHANNEL_NAME, get_text('admin_add_channel_name_prompt', lang_code)),
-        'admin_create_code_start': (CREATE_CODE_NAME, get_text('admin_create_code_prompt_name', lang_code)),
-        'admin_edit_connection_info': (EDIT_HOSTNAME, get_text('admin_edit_hostname_prompt', lang_code)),
-    }
-
-    if data in entry_points:
-        state, text = entry_points[data]
-        await query.edit_message_text(text)
-        return state
-
     if data == 'admin_panel_main':
         keyboard = [
             [InlineKeyboardButton(get_text('admin_manage_rewards_button', lang_code), callback_data='admin_manage_rewards')],
@@ -512,6 +506,12 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(get_text('admin_manage_codes_button', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
     elif data == 'admin_user_stats':
         await show_user_stats(update, context)
+
+async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query; await query.answer()
+    lang_code = get_user_lang(query.from_user.id)
+    await query.edit_message_text(get_text('admin_add_channel_name_prompt', lang_code))
+    return ADD_CHANNEL_NAME
 
 async def add_channel_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['channel_name'] = update.message.text
@@ -568,6 +568,12 @@ async def remove_channel_confirm(update: Update, context: ContextTypes.DEFAULT_T
     await query.edit_message_text(get_text('admin_channel_removed_success', lang_code))
     await remove_channel_start(update, context)
 
+async def create_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query; await query.answer()
+    lang_code = get_user_lang(query.from_user.id)
+    await query.edit_message_text(get_text('admin_create_code_prompt_name', lang_code))
+    return CREATE_CODE_NAME
+
 async def receive_code_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['code_name'] = update.message.text
     lang_code = get_user_lang(update.effective_user.id)
@@ -597,6 +603,12 @@ async def receive_code_uses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text(get_text('invalid_input', lang_code)); return CREATE_CODE_USES
 
+async def edit_connection_info_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query; await query.answer()
+    lang_code = get_user_lang(query.from_user.id)
+    await query.edit_message_text(get_text('admin_edit_hostname_prompt', lang_code))
+    return EDIT_HOSTNAME
+
 async def edit_hostname_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['hostname'] = update.message.text
     lang_code = get_user_lang(update.effective_user.id)
@@ -622,12 +634,19 @@ async def edit_udpcustom_received(update: Update, context: ContextTypes.DEFAULT_
     return EDIT_ADMIN_CONTACT
 
 async def edit_admin_contact_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['admin_contact'] = update.message.text
+    lang_code = get_user_lang(update.effective_user.id)
+    await update.message.reply_text(get_text('admin_edit_payload_prompt', lang_code))
+    return EDIT_PAYLOAD
+
+async def edit_payload_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang_code = get_user_lang(update.effective_user.id)
     set_connection_setting('hostname', context.user_data['hostname'])
     set_connection_setting('ws_ports', context.user_data['ws_ports'])
     set_connection_setting('ssl_port', context.user_data['ssl_port'])
     set_connection_setting('udpcustom_port', context.user_data['udpcustom_port'])
-    set_connection_setting('admin_contact', update.message.text)
+    set_connection_setting('admin_contact', context.user_data['admin_contact'])
+    set_connection_setting('payload', update.message.text)
     await update.message.reply_text(get_text('admin_info_updated_success', lang_code))
     context.user_data.clear()
     return ConversationHandler.END
@@ -769,6 +788,7 @@ def main():
             EDIT_SSL_PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_ssl_port_received)],
             EDIT_UDPCUSTOM: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_udpcustom_received)],
             EDIT_ADMIN_CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_admin_contact_received)],
+            EDIT_PAYLOAD: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_payload_received)],
         },
         fallbacks=[CommandHandler('cancel', cancel_conversation)],
         **conv_defaults
@@ -785,7 +805,7 @@ def main():
         **conv_defaults
     )
     create_code_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(admin_panel_callback, pattern='^admin_create_code_start$')],
+        entry_points=[CallbackQueryHandler(create_code_start, pattern='^admin_create_code_start$')],
         states={
             CREATE_CODE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_name)],
             CREATE_CODE_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_points)],
