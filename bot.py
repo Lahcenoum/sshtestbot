@@ -121,12 +121,14 @@ TEXTS = {
 }
 
 def get_text(key, lang_code='ar'):
+    # Fetches text for the given key and language.
     return TEXTS.get(lang_code, TEXTS['ar']).get(key, key)
 
 # =================================================================================
 # 3. إدارة قاعدة البيانات (Database Management)
 # =================================================================================
 def init_db():
+    # Initializes the database and creates tables if they don't exist.
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
@@ -152,6 +154,7 @@ def init_db():
         conn.commit()
 
 def get_or_create_user(user_id):
+    # Gets a user from the database or creates a new one.
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         if not cursor.execute("SELECT 1 FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone():
@@ -159,16 +162,19 @@ def get_or_create_user(user_id):
             conn.commit()
 
 def is_user_banned(user_id):
+    # Checks if a user is in the banned list.
     with sqlite3.connect(DB_FILE) as conn:
         return conn.execute("SELECT 1 FROM banned_users WHERE telegram_user_id = ?", (user_id,)).fetchone() is not None
 
 def get_connection_setting(key):
+    # Retrieves a specific connection setting from the database.
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute("SELECT value FROM connection_settings WHERE key = ?", (key,)).fetchone()
         return result[0] if result else ""
 
 def set_connection_setting(key, value):
-     with sqlite3.connect(DB_FILE) as conn:
+    # Updates a specific connection setting in the database.
+    with sqlite3.connect(DB_FILE) as conn:
         conn.execute("INSERT OR REPLACE INTO connection_settings (key, value) VALUES (?, ?)", (key, value))
         conn.commit()
 
@@ -176,6 +182,7 @@ def set_connection_setting(key, value):
 # 4. دوال مساعدة وديكورات (Helpers & Decorators)
 # =================================================================================
 def check_banned(func):
+    # Decorator to block banned users from using commands.
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user_id = update.effective_user.id
         if is_user_banned(user_id):
@@ -185,9 +192,11 @@ def check_banned(func):
     return wrapper
 
 def generate_password():
+    # Generates a new random password.
     return "bot" + ''.join(random.choices(string.ascii_letters + string.digits, k=6))
 
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    # Checks if the user is a member of the required channel and group.
     try:
         channel_member = await context.bot.get_chat_member(REQUIRED_CHANNEL_ID, user_id)
         group_member = await context.bot.get_chat_member(REQUIRED_GROUP_ID, user_id)
@@ -203,6 +212,7 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
 # =================================================================================
 @check_banned
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False):
+    # Handles the /start command.
     user = update.effective_user
     message = update.message if not from_callback else update.callback_query.message
     get_or_create_user(user.id)
@@ -227,9 +237,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
 
 @check_banned
 async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Handles the request for a new SSH account.
     user_id = update.effective_user.id
     
-    # Check for one account per day limit
+    # Check for one account per 24 hours limit.
     with sqlite3.connect(DB_FILE) as conn:
         last_creation = conn.execute("SELECT MAX(created_at) FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
     
@@ -265,13 +276,13 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result_details = process.stdout
         
-        # Fetch connection info from DB
+        # Fetch connection info from DB to build the message.
         hostname = get_connection_setting("hostname")
         ws_ports = get_connection_setting("ws_ports")
         ssl_port = get_connection_setting("ssl_port")
         udpcustom_port = get_connection_setting("udpcustom_port")
 
-        # Format the success message
+        # Format the success message using HTML.
         account_info = (
             f"<b>✅ تم إنشاء حسابك بنجاح!</b>\n\n"
             f"<b>البيانات الأساسية:</b>\n"
@@ -291,6 +302,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @check_banned
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Shows the user's active accounts.
     user_id = update.effective_user.id
     with sqlite3.connect(DB_FILE) as conn:
         accounts = conn.execute("SELECT ssh_username FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
@@ -311,6 +323,7 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @check_banned
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Shows the user's point balance.
     user_id = update.effective_user.id
     with sqlite3.connect(DB_FILE) as conn:
         points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
@@ -318,6 +331,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @check_banned
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Gives the user a daily point bonus.
     user_id = update.effective_user.id
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -334,6 +348,7 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @check_banned
 async def contact_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Shows the admin's contact info.
     contact_info = get_connection_setting("admin_contact")
     await update.message.reply_text(get_text('contact_admin_info').format(contact_info=contact_info))
 
@@ -341,6 +356,7 @@ async def contact_admin_command(update: Update, context: ContextTypes.DEFAULT_TY
 # 6. Admin Panel & Features
 # =================================================================================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Displays the main admin panel.
     user_id = update.effective_user.id
     if user_id != ADMIN_USER_ID: return
 
@@ -353,6 +369,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(get_text('admin_panel_header'), reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Handles all callbacks from the admin panel buttons.
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -388,9 +405,8 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         ]
         await query.edit_message_text(get_text('admin_manage_users_button'), reply_markup=InlineKeyboardMarkup(keyboard))
     elif data == 'admin_edit_connection_info':
-        # This will start the conversation handler for editing connection info
         await query.edit_message_text(get_text('admin_edit_hostname_prompt'))
-        context.user_data.clear() # Clear previous data
+        context.user_data.clear() 
         return EDIT_HOSTNAME
 
 # --- Conversations for Admin ---
@@ -446,7 +462,7 @@ async def remove_channel_confirm(update: Update, context: ContextTypes.DEFAULT_T
         conn.execute("DELETE FROM reward_channels WHERE channel_id = ?", (channel_id,))
         conn.execute("DELETE FROM user_channel_rewards WHERE channel_id = ?", (channel_id,))
     await query.edit_message_text(get_text('admin_channel_removed_success'))
-    await admin_panel_callback(update, context) # Refresh menu
+    await admin_panel_callback(update, context) 
 
 async def create_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
@@ -563,7 +579,6 @@ async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             keyboard.append([InlineKeyboardButton(button_text, url=link)])
             keyboard.append([InlineKeyboardButton(get_text('verify_join_button'), callback_data=f"verify_r_{cid}_{points}")])
     
-    # Use edit_message_text if it's a callback, otherwise reply_text
     reply_func = update.callback_query.edit_message_text if update.callback_query else update.message.reply_text
     await reply_func(get_text('rewards_header'), reply_markup=InlineKeyboardMarkup(keyboard))
 
