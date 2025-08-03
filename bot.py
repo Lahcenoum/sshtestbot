@@ -3,17 +3,16 @@ import subprocess
 import random
 import string
 import traceback
+import html  # Import the html library for escaping
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
-from telegram.error import BadRequest
+from telegram.constants import ParseMode # Import ParseMode for HTML
 
 # The token is replaced by the installation script
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN" 
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 ACCOUNT_EXPIRY_DAYS = 2
-
-# The escape function has been removed as it was causing the formatting error.
 
 def generate_password():
     # Creates a random password.
@@ -46,22 +45,20 @@ async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         result_details = process.stdout
         
-        # We now send the raw, unescaped text inside the code block.
-        # The .strip() method removes any unwanted leading/trailing whitespace.
+        # Escape the details for HTML to be safe
+        safe_details = html.escape(result_details.strip())
+
+        # --- THE FIX: Using HTML formatting instead of MarkdownV2 ---
         response_message = (
-            f"✅ تم إنشاء حسابك بنجاح!\n\n"
-            f"**البيانات:**\n```\n{result_details.strip()}\n```\n\n"
-            f"⚠️ **ملاحظة**: سيتم حذف الحساب تلقائيًا بعد **{ACCOUNT_EXPIRY_DAYS} أيام**."
+            f"<b>✅ تم إنشاء حسابك بنجاح!</b>\n\n"
+            f"<b>البيانات:</b>\n<pre><code>{safe_details}</code></pre>\n\n"
+            f"⚠️ <b>ملاحظة</b>: سيتم حذف الحساب تلقائيًا بعد <b>{ACCOUNT_EXPIRY_DAYS} أيام</b>."
         )
         
-        await update.message.reply_text(response_message, parse_mode='MarkdownV2')
+        await update.message.reply_text(response_message, parse_mode=ParseMode.HTML)
 
-    except BadRequest as e:
-        # This block is now less likely to be triggered.
-        print(f"--- Telegram Formatting Error: {e} ---")
-        await update.message.reply_text(f"✅ تم إنشاء حسابك بنجاح، ولكن فشل عرض التفاصيل بشكل منسق. إليك البيانات:\n\n{result_details}")
     except Exception as e:
-        # Fallback for other errors
+        # Fallback for any other errors
         print("--- AN UNEXPECTED ERROR OCCURRED ---")
         traceback.print_exc()
         await update.message.reply_text("❌ حدث خطأ أثناء إنشاء الحساب. قد يكون لديك حساب بالفعل.")
