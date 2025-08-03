@@ -84,7 +84,6 @@ TEXTS = {
         "admin_channel_removed_success": "🗑️ تم إزالة القناة بنجاح.",
         "invalid_input": "❌ إدخال غير صالح، يرجى المحاولة مرة أخرى.",
         "operation_cancelled": "✅ تم إلغاء العملية.",
-        "creation_success": "✅ تم إنشاء حسابك بنجاح!\n\n**البيانات:**\n```\n{details}\n```\n\n⚠️ **ملاحظة**: سيتم حذفه تلقائيًا بعد **{days} أيام**.",
         "account_details": "🏷️ **اسم المستخدم:** `{username}`\n🗓️ **تاريخ انتهاء الصلاحية:** `{expiry}`",
         "choose_language": "اختر لغتك المفضلة:",
         "language_set": "✅ تم تعيين اللغة إلى: {lang_name}",
@@ -270,15 +269,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang_code = get_user_language(user_id)
-    print(f"[DEBUG] User {user_id} requested an SSH account.")
-
-    # Ensure user exists before any operation
+    
     get_or_create_user(user_id)
 
     if is_feature_enabled('points_system'):
         with sqlite3.connect(DB_FILE) as conn:
             points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-        print(f"[DEBUG] User has {points} points. Cost is {COST_PER_ACCOUNT}.")
         if points < COST_PER_ACCOUNT:
             await update.message.reply_text(get_text('not_enough_points', lang_code).format(cost=COST_PER_ACCOUNT))
             return
@@ -286,7 +282,6 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = generate_username()
     password = generate_password()
     command_to_run = [SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
-    print(f"[DEBUG] Preparing to run command: {' '.join(command_to_run)}")
     
     try:
         process = subprocess.run(
@@ -298,46 +293,38 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         result = process.stdout.strip()
-        print(f"[DEBUG] Script executed successfully. Raw output:\n{result}")
-
-        # ✨✨✨ Diagnostic Step ✨✨✨
-        try:
-            print("[DIAGNOSTIC] Attempting to send raw script output to admin.")
-            await context.bot.send_message(
-                chat_id=ADMIN_USER_ID,
-                text=f"--- SCRIPT OUTPUT ---\nUser: {username}\n\n{result}"
-            )
-            print("[DIAGNOSTIC] Raw output sent to admin successfully.")
-        except Exception as e:
-            print(f"[DIAGNOSTIC_ERROR] Failed to send raw output to admin: {e}")
-        # ✨✨✨ End of Diagnostic Step ✨✨✨
 
         with sqlite3.connect(DB_FILE) as conn:
             if is_feature_enabled('points_system'):
                 conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
             conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, created_at) VALUES (?, ?, ?)", (user_id, username, datetime.now()))
             conn.commit()
-        print("[DEBUG] Database updated successfully.")
         
-        escaped_details = escape_markdown_v2(result)
-        print(f"[DEBUG] Escaped details for Telegram:\n{escaped_details}")
+        # ✨✨✨ الحل النهائي: إرسال الرسالة كنص عادي لتجنب أي أخطاء تنسيق ✨✨✨
+        plain_text_message = f"""
+✅ تم إنشاء حسابك بنجاح!
 
-        await update.message.reply_text(
-            get_text('creation_success', lang_code).format(details=escaped_details, days=ACCOUNT_EXPIRY_DAYS),
-            parse_mode=ParseMode.MARKDOWN_V2
-        )
-        print("[DEBUG] Success message sent to user.")
+البيانات:
+{result}
 
-    except subprocess.CalledProcessError as e:
-        print(f"[ERROR] Script failed with exit code {e.returncode}.")
-        print(f"  - STDOUT: {e.stdout}")
-        print(f"  - STDERR: {e.stderr}")
-        await update.message.reply_text(get_text('creation_error', lang_code) + f"\n\nError Code: S{e.returncode}")
+⚠️ ملاحظة: سيتم حذفه تلقائيًا بعد {ACCOUNT_EXPIRY_DAYS} أيام.
+"""
+        await update.message.reply_text(text=plain_text_message)
+
     except Exception as e:
-        print(f"[ERROR] An unexpected error occurred in get_ssh: {e}")
-        await update.message.reply_text(get_text('creation_error', lang_code) + f"\n\nError Code: G1")
+        print(f"Error creating SSH account: {e}")
+        # Send detailed error to admin for debugging
+        if hasattr(e, 'stderr'):
+            error_details = e.stderr
+        else:
+            error_details = str(e)
+        await context.bot.send_message(
+            chat_id=ADMIN_USER_ID,
+            text=f"🚨 فشل إنشاء حساب للمستخدم {user_id}.\n\nالخطأ:\n`{error_details}`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        await update.message.reply_text(get_text('creation_error', lang_code))
 
-# ... (بقية الدوال تبقى كما هي)
 async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     get_or_create_user(user_id)
