@@ -2,6 +2,7 @@ import sys
 import subprocess
 import random
 import string
+import re  # <-- إضافة مهمة
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -10,6 +11,13 @@ TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 ACCOUNT_EXPIRY_DAYS = 2
+
+# --- بداية الدالة الجديدة ---
+def escape_markdown_v2(text: str) -> str:
+    """تهريب الأحرف الخاصة لتنسيق MarkdownV2 الخاص بتليجرام."""
+    escape_chars = r'\_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+# --- نهاية الدالة الجديدة ---
 
 def generate_password():
     """تنشئ كلمة مرور عشوائية."""
@@ -42,9 +50,15 @@ async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
             check=True
         )
         result_details = process.stdout
+        
+        # --- بداية التعديل ---
+        # نقوم بتهريب المخرجات قبل إرسالها
+        safe_details = escape_markdown_v2(result_details)
+        # --- نهاية التعديل ---
+
         response_message = (
             f"✅ تم إنشاء حسابك بنجاح!\n\n"
-            f"**البيانات:**\n```\n{result_details}\n```\n\n"
+            f"**البيانات:**\n```\n{safe_details}\n```\n\n"  # نستخدم المتغير الآمن هنا
             f"⚠️ **ملاحظة**: سيتم حذف الحساب تلقائيًا بعد **{ACCOUNT_EXPIRY_DAYS} أيام**."
         )
         await update.message.reply_text(response_message, parse_mode='MarkdownV2')
@@ -62,4 +76,8 @@ def main():
     app.run_polling()
 
 if __name__ == '__main__':
+    # تأكد من أن التوكن تم تعيينه (هذه نسخة للبوت، التوكن الفعلي يأتي من سكربت التثبيت)
+    if TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+        print("Error: Bot token is not set. Please run the installation script.")
+        sys.exit(1)
     main()
