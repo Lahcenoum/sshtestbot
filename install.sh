@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-#  سكربت تثبيت مخصص لمستودع Lahcenoum/sshtestbot (مع إصلاح لمشكلة PEP 668)
+#  سكربت التثبيت النهائي - يضمن تشغيل المشروع بالكامل داخل البيئة الافتراضية
 # ==============================================================================
 
 # --- إعدادات أساسية ---
@@ -77,21 +77,17 @@ echo -e "\n[5/8] إعطاء صلاحيات التنفيذ للسكربتات..."
 chmod +x /usr/local/bin/create_ssh_user.sh
 
 
-# 6. إعداد بيئة بايثون وتثبيت المكتبات (الطريقة الصحيحة)
+# 6. إعداد بيئة بايثون وتثبيت المكتبات
 echo -e "\n[6/8] إعداد بيئة بايثون وتثبيت المكتبات المطلوبة..."
 python3 -m venv venv
-# --- بداية الحل ---
-# نستخدم subshell لتشغيل الأوامر داخل البيئة الافتراضية
-# هذا يضمن أن 'pip' يقوم بالتثبيت داخل 'venv' وليس في النظام
 (
   source venv/bin/activate
   pip install python-telegram-bot
 )
-# --- نهاية الحل ---
 
 
 # 7. إعداد البوت كخدمة (systemd)
-echo -e "\n[7/8] إعداد البوت كخدمة دائمة..."
+echo -e "\n[7/8] إعداد البوت كخدمة دائمة (وهو يعمل داخل البيئة الافتراضية)..."
 cat > /etc/systemd/system/ssh_bot.service << EOL
 [Unit]
 Description=Telegram SSH Bot Service (Lahcenoum)
@@ -101,6 +97,7 @@ After=network.target
 User=root
 Group=root
 WorkingDirectory=${PROJECT_DIR}
+# هذا السطر يضمن تشغيل البوت باستخدام بايثون الموجود في البيئة الافتراضية
 ExecStart=${PROJECT_DIR}/venv/bin/python ${PROJECT_DIR}/bot.py
 Restart=always
 RestartSec=10
@@ -118,7 +115,7 @@ systemctl start ssh_bot.service
 
 echo -e "\n=================================================="
 echo "✅ اكتمل التثبيت بنجاح!"
-echo "   تم تحميل مشروعك وتصحيح الملفات اللازمة تلقائياً."
+echo "   البوت الآن يعمل بالكامل داخل البيئة الافتراضية."
 echo "=================================================="
 echo -e "\n- لمراقبة حالة البوت: systemctl status ssh_bot.service"
 echo "- لإعادة تشغيله: systemctl restart ssh_bot.service"
