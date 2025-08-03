@@ -217,14 +217,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
     message = update.message if not from_callback else update.callback_query.message
     get_or_create_user(user.id)
 
-    if not await check_membership(user.id, context):
-        keyboard = [
-            [InlineKeyboardButton(get_text('force_join_channel_button'), url=CHANNEL_LINK)],
-            [InlineKeyboardButton(get_text('force_join_group_button'), url=GROUP_LINK)],
-            [InlineKeyboardButton(get_text('force_join_verify_button'), callback_data='verify_join')],
-        ]
-        await message.reply_text(get_text('force_join_prompt'), reply_markup=InlineKeyboardMarkup(keyboard))
-        return
+    # --- START OF TEMPORARY CHANGE FOR DIAGNOSIS ---
+    # The block below is temporarily disabled to check if the force-join feature is the problem.
+    # If the bot works after this change, the problem is with the channel IDs or bot permissions.
+    # if not await check_membership(user.id, context):
+    #     keyboard = [
+    #         [InlineKeyboardButton(get_text('force_join_channel_button'), url=CHANNEL_LINK)],
+    #         [InlineKeyboardButton(get_text('force_join_group_button'), url=GROUP_LINK)],
+    #         [InlineKeyboardButton(get_text('force_join_verify_button'), callback_data='verify_join')],
+    #     ]
+    #     await message.reply_text(get_text('force_join_prompt'), reply_markup=InlineKeyboardMarkup(keyboard))
+    #     return
+    # --- END OF TEMPORARY CHANGE ---
 
     keyboard_layout = [
         [KeyboardButton(get_text('get_ssh_button'))],
@@ -676,6 +680,11 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
 
+    # --- FIX for ConversationHandler Warnings ---
+    # By setting per_message=True, each button click is handled correctly.
+    # allow_reentry=True is good practice for menu-based conversations.
+    conv_defaults = {'per_message': True, 'allow_reentry': True}
+
     # Conversation Handlers
     edit_info_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_panel_callback, pattern='^admin_edit_connection_info$')],
@@ -686,7 +695,8 @@ def main():
             EDIT_UDPCUSTOM: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_udpcustom_received)],
             EDIT_ADMIN_CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_admin_contact_received)],
         },
-        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+        fallbacks=[CommandHandler('cancel', cancel_conversation)],
+        **conv_defaults
     )
     add_channel_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(add_channel_start, pattern='^admin_add_channel_start$')],
@@ -696,7 +706,8 @@ def main():
             ADD_CHANNEL_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_channel_get_id)],
             ADD_CHANNEL_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_channel_get_points)],
         },
-        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+        fallbacks=[CommandHandler('cancel', cancel_conversation)],
+        **conv_defaults
     )
     create_code_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(create_code_start, pattern='^admin_create_code_start$')],
@@ -705,17 +716,20 @@ def main():
             CREATE_CODE_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_code_points)],
             CREATE_CODE_USES: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_code_uses)],
         },
-        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+        fallbacks=[CommandHandler('cancel', cancel_conversation)],
+        **conv_defaults
     )
     ban_user_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(ban_user_start, pattern='^admin_ban_user_start$')],
         states={BAN_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, ban_user_id_received)]},
-        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+        fallbacks=[CommandHandler('cancel', cancel_conversation)],
+        **conv_defaults
     )
     unban_user_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(unban_user_start, pattern='^admin_unban_user_start$')],
         states={UNBAN_USER_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, unban_user_id_received)]},
-        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+        fallbacks=[CommandHandler('cancel', cancel_conversation)],
+        **conv_defaults
     )
     redeem_code_conv = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(f"^{get_text('redeem_code_button')}$"), redeem_code_start)],
