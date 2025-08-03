@@ -85,6 +85,7 @@ async def request_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"**البيانات:**\n```\n{result_details}\n```\n\n"
             f"⚠️ **ملاحظة**: سيتم حذف الحساب تلقائيًا بعد **{ACCOUNT_EXPIRY_DAYS} أيام**."
         )
+        # استخدم MarkdownV2 لأنه أكثر دقة في التعامل مع الأحرف الخاصة
         await update.message.reply_text(response_message, parse_mode='MarkdownV2')
 
     except FileNotFoundError:
