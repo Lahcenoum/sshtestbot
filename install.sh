@@ -1,125 +1,86 @@
 #!/bin/bash
 
-# ==============================================================================
-#  سكريبت التثبيت الشامل - يحل مشكلة PEP 668 ويضمن تشغيل المشروع
-#  بشكل صحيح داخل البيئة الافتراضية.
-# ==============================================================================
-
-# --- إعدادات أساسية ---
-# ⚠️ يمكنك تغيير هذا الرابط إلى رابط مستودعك على GitHub إذا أردت
+# إعدادات
 GIT_REPO_URL="https://github.com/Lahcenoum/sshtestbot.git"
 PROJECT_DIR="/home/ssh_bot"
+CREATE_SSH_SCRIPT="/usr/local/bin/create_ssh_user.sh"
+BOT_USER=$(logname)
 
-# --- نهاية قسم الإعدادات ---
-
-# التحقق من صلاحيات الجذر
+# تأكد من صلاحيات root
 if [ "$(id -u)" -ne 0 ]; then
-  echo "❌ هذا السكربت يجب أن يعمل بصلاحيات الجذر (root)."
+  echo "❌ يجب تشغيل السكربت كـ root."
   exit 1
 fi
 
-echo "=================================================="
-echo "      بدء تثبيت البوت مع الحلول المتكاملة"
-echo "=================================================="
+echo "✅ بدء التثبيت..."
 
-# 1. تحديث وتثبيت المتطلبات
-echo -e "\n[1/8] تحديث النظام وتثبيت المتطلبات (git, python3-venv, python3-pip, sqlite3)..."
-apt-get update
-apt-get install -y git python3-venv python3-pip sqlite3
+# 1. تثبيت المتطلبات
+apt-get update && apt-get install -y git python3-venv python3-pip curl
 
-# 2. استنساخ المشروع من GitHub
-echo -e "\n[2/8] استنساخ المشروع من GitHub..."
+# 2. استنساخ المشروع
 rm -rf "$PROJECT_DIR"
-git clone "$GIT_REPO_URL" "$PROJECT_DIR"
-if [ ! -d "$PROJECT_DIR" ]; then echo "❌ فشل استنساخ المشروع."; exit 1; fi
-cd "$PROJECT_DIR" || exit
+git clone "$GIT_REPO_URL" "$PROJECT_DIR" || { echo "❌ فشل في الاستنساخ."; exit 1; }
 
-# 3. إعداد متغيرات البوت
-echo -e "\n[3/8] إعداد متغيرات البوت..."
-read -p "الرجاء إدخال توكن البوت: " BOT_TOKEN
-if [ -z "$BOT_TOKEN" ]; then echo "❌ لم يتم إدخال التوكن."; exit 1; fi
-sed -i 's/^TOKEN = "YOUR_TELEGRAM_BOT_TOKEN".*/TOKEN = "'"$BOT_TOKEN"'"/' "${PROJECT_DIR}/bot.py"
+# 3. إدخال التوكن
+read -p "🤖 أدخل توكن البوت: " BOT_TOKEN
+[ -z "$BOT_TOKEN" ] && echo "❌ التوكن فارغ." && exit 1
+sed -i 's|^TOKEN = "YOUR_TELEGRAM_BOT_TOKEN".*|TOKEN = "'"$BOT_TOKEN"'"|' "$PROJECT_DIR/bot.py"
 
+# 4. إنشاء سكربت SSH
+read -p "📡 أدخل IP السيرفر (أو اتركه فارغًا): " SERVER_IP
 
-# 4. تصحيح وإعادة كتابة سكربت create_ssh_user.sh
-echo -e "\n[4/8] تصحيح سكربت create_ssh_user.sh..."
-read -p "الرجاء إدخال عنوان IP الخاص بسيرفرك: " SERVER_IP
-if [ -z "$SERVER_IP" ]; then echo "❌ لم يتم إدخال الآي بي."; exit 1; fi
-
-cat > /usr/local/bin/create_ssh_user.sh << EOL
+cat > "$CREATE_SSH_SCRIPT" << EOL
 #!/bin/bash
-if [ "\$#" -ne 3 ]; then
-    echo "Usage: \$0 <username> <password> <expiry_days>"
-    exit 1
-fi
-USERNAME=\$1
-PASSWORD=\$2
-EXPIRY_DAYS=\$3
-if id "\$USERNAME" &>/dev/null; then
-    echo "Error: User '\$USERNAME' already exists."
-    exit 1
-fi
-EXPIRY_DATE=\$(date -d "+\$EXPIRY_DAYS days" +%Y-%m-%d)
-useradd "\$USERNAME" -m -e "\$EXPIRY_DATE" -s /bin/bash -p "\$(openssl passwd -1 "\$PASSWORD")"
-if [ \$? -eq 0 ]; then
-    echo "Host/IP: ${SERVER_IP}"
-    echo "Username: \$USERNAME"
-    echo "Password: \$PASSWORD"
-    echo "Expires on: \$EXPIRY_DATE"
-else
-    echo "Error: Failed to create user '\$USERNAME'."
-    exit 1
-fi
-exit 0
+if [ \$# -ne 3 ]; then echo "❌ استخدام غير صحيح."; exit 1; fi
+USERNAME="\$1"; PASSWORD="\$2"; EXPIRY_DAYS="\$3"
+if id "\$USERNAME" &>/dev/null; then echo "❌ المستخدم موجود."; exit 1; fi
+useradd -e \$(date -d "+\$EXPIRY_DAYS days" +%Y-%m-%d) -M -s /usr/sbin/nologin "\$USERNAME"
+echo -e "\$PASSWORD\n\$PASSWORD" | passwd "\$USERNAME" &>/dev/null
+IP="${SERVER_IP}"; [ -z "\$IP" ] && IP=\$(curl -s ifconfig.me)
+PORT=22
+EXP_DATE=\$(chage -l "\$USERNAME" | grep "Account expires" | cut -d: -f2 | xargs)
+echo "📄 معلومات الحساب:"
+echo "👤 المستخدم: \$USERNAME"
+echo "🔑 كلمة المرور: \$PASSWORD"
+echo "📡 الهوست: \$IP"
+echo "🚪 المنفذ: \$PORT"
+echo "📅 الانتهاء: \$EXP_DATE"
 EOL
 
+chmod +x "$CREATE_SSH_SCRIPT"
+echo "$BOT_USER ALL=(ALL) NOPASSWD: $CREATE_SSH_SCRIPT" > /etc/sudoers.d/ssh_bot
+chmod 440 /etc/sudoers.d/ssh_bot
 
-# 5. إعطاء صلاحيات التنفيذ
-echo -e "\n[5/8] إعطاء صلاحيات التنفيذ للسكربتات..."
-chmod +x /usr/local/bin/create_ssh_user.sh
-
-
-# 6. إعداد بيئة بايثون وتثبيت المكتبات (حل مشكلة PEP 668)
-echo -e "\n[6/8] إعداد بيئة بايثون وتثبيت المكتبات المطلوبة..."
+# 5. إنشاء البيئة الافتراضية وتثبيت المكتبات داخلها
+cd "$PROJECT_DIR" || exit 1
 python3 -m venv venv
-# نستخدم subshell لتشغيل الأوامر داخل البيئة الافتراضية
-(
-  source venv/bin/activate
-  pip install python-telegram-bot
-)
+source venv/bin/activate
+pip install --upgrade pip
+pip install python-telegram-bot
+deactivate
 
-
-# 7. إعداد البوت كخدمة (systemd)
-echo -e "\n[7/8] إعداد البوت كخدمة دائمة (يعمل داخل البيئة الافتراضية)..."
+# 6. إنشاء خدمة systemd تعمل ببيئة venv
 cat > /etc/systemd/system/ssh_bot.service << EOL
 [Unit]
-Description=Telegram SSH Bot Service
+Description=Telegram SSH Bot
 After=network.target
 
 [Service]
-User=root
-Group=root
-WorkingDirectory=${PROJECT_DIR}
-# هذا السطر يضمن تشغيل البوت باستخدام بايثون الموجود في البيئة الافتراضية
-ExecStart=${PROJECT_DIR}/venv/bin/python ${PROJECT_DIR}/bot.py
+Type=simple
+User=$BOT_USER
+WorkingDirectory=$PROJECT_DIR
+ExecStart=$PROJECT_DIR/venv/bin/python $PROJECT_DIR/bot.py
 Restart=always
-RestartSec=10
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 EOL
 
-
-# 8. تشغيل الخدمة
-echo -e "\n[8/8] تشغيل الخدمة..."
+# 7. تفعيل الخدمة
 systemctl daemon-reload
 systemctl enable ssh_bot.service
-systemctl start ssh_bot.service
+systemctl restart ssh_bot.service
 
-echo -e "\n=================================================="
-echo "✅ اكتمل التثبيت بنجاح!"
-echo "   تم حل جميع المشاكل وتثبيت البوت بشكل صحيح."
-echo "=================================================="
-echo -e "\n- لمراقبة حالة البوت: systemctl status ssh_bot.service"
-echo "- لإعادة تشغيله: systemctl restart ssh_bot.service"
-echo "--------------------------------------------------"
+echo "✅ تم التثبيت بنجاح!"
+echo "📌 راقب البوت عبر: journalctl -u ssh_bot.service -f"
