@@ -2,6 +2,7 @@
 
 # ========================================================================
 # سكريبت التثبيت الكامل - SSH Telegram Bot (by Lahcen)
+# - تم تصحيح طريقة تثبيت المكتبات داخل البيئة الافتراضية
 # ========================================================================
 
 GIT_REPO_URL="https://github.com/Lahcenoum/sshtestbot.git"
@@ -58,8 +59,8 @@ if id "\$USERNAME" &>/dev/null; then
 fi
 
 EXPIRY_DATE=\$(date -d "+\$EXPIRY_DAYS days" +%Y-%m-%d)
-useradd "\$USERNAME" -m -e "\$EXPIRY_DATE" -s /bin/bash
-echo "\$USERNAME:\$PASSWORD" | chpasswd
+# استخدام useradd مع openssl passwd لتشفير كلمة المرور
+useradd "\$USERNAME" -m -e "\$EXPIRY_DATE" -s /bin/bash -p "\$(openssl passwd -1 "\$PASSWORD")"
 
 if [ \$? -eq 0 ]; then
     echo -e "[$(date)] ✅ User created: \$USERNAME" >> "$LOG_FILE"
@@ -76,13 +77,18 @@ EOL
 
 chmod +x /usr/local/bin/create_ssh_user.sh
 
-# 5. إعداد بيئة بايثون
-echo -e "\n[5/9] ✅ إعداد البيئة الافتراضية..."
+# 5. إعداد بيئة بايثون (الطريقة الصحيحة)
+echo -e "\n[5/9] ✅ إعداد البيئة الافتراضية وتثبيت المكتبات..."
 python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install python-telegram-bot --break-system-packages
-deactivate || true
+# --- بداية الحل ---
+# نستخدم subshell لتشغيل الأوامر داخل البيئة الافتراضية
+# هذا يحل مشكلة PEP 668 ويتجنب الحاجة لـ --break-system-packages
+(
+  source venv/bin/activate
+  pip install --upgrade pip
+  pip install python-telegram-bot
+)
+# --- نهاية الحل ---
 
 # 6. إعداد خدمة systemd
 echo -e "\n[6/9] ✅ إعداد الخدمة الدائمة systemd..."
@@ -114,9 +120,11 @@ sleep 5
 
 # 8. اختبار البوت تلقائيًا
 echo -e "\n[8/9] ✅ اختبار تشغيل البوت..."
-TEST_MSG="✅ تم تثبيت بوت SSH بنجاح!"
+# استبدل 534428088 بمعرف المستخدم الخاص بك لتلقي الإشعارات
+ADMIN_CHAT_ID="5344028088"
+TEST_MSG="✅ تم تثبيت بوت SSH بنجاح على سيرفر ${SERVER_IP}!"
 curl -s -X POST https://api.telegram.org/bot$BOT_TOKEN/sendMessage \
-     -d chat_id=534428088 \
+     -d chat_id=$ADMIN_CHAT_ID \
      -d text="$TEST_MSG" >/dev/null 2>&1
 
 if systemctl is-active --quiet ssh_bot.service; then
