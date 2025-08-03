@@ -70,7 +70,7 @@ TEXTS = {
         "daily_bonus_already_claimed": "ℹ️ لقد حصلت بالفعل على مكافأتك اليومية. تعال غدًا!",
         "no_accounts_found": "ℹ️ لم يتم العثور على أي حسابات نشطة مرتبطة بك.",
         "your_accounts": "<b>👤 حساباتك النشطة:</b>",
-        "account_details": "🏷️ <b>اسم المستخدم:</b> <code>{username}</code>\n🗓️ <b>تاريخ انتهاء الصلاحية:</b> <code>{expiry}</code>",
+        "account_details": "🏷️ <b>اسم المستخدم:</b> <code>{username}</code>\n🔑 <b>كلمة المرور:</b> <code>{password}</code>\n🗓️ <b>تاريخ انتهاء الصلاحية:</b> <code>{expiry}</code>",
         "rewards_header": "انضم إلى هذه القنوات والمجموعات واحصل على نقاط!",
         "verify_join_button": "✅ تحقق من الانضمام",
         "reward_success": "🎉 رائع! لقد حصلت على {points} نقطة.",
@@ -140,7 +140,7 @@ TEXTS = {
         "daily_bonus_already_claimed": "ℹ️ You have already claimed your daily bonus. Come back tomorrow!",
         "no_accounts_found": "ℹ️ No active accounts associated with you were found.",
         "your_accounts": "<b>👤 Your Active Accounts:</b>",
-        "account_details": "🏷️ <b>Username:</b> <code>{username}</code>\n🗓️ <b>Expiration Date:</b> <code>{expiry}</code>",
+        "account_details": "🏷️ <b>Username:</b> <code>{username}</code>\n🔑 <b>Password:</b> <code>{password}</code>\n🗓️ <b>Expiration Date:</b> <code>{expiry}</code>",
         "rewards_header": "Join these channels and groups to get points!",
         "verify_join_button": "✅ Verify Join",
         "reward_success": "🎉 Great! You've received {points} points.",
@@ -196,7 +196,7 @@ def get_text(key, lang_code='ar'):
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, ssh_password TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE)')
         cursor.execute('CREATE TABLE IF NOT EXISTS reward_channels (channel_id INTEGER PRIMARY KEY, channel_link TEXT NOT NULL, reward_points INTEGER NOT NULL, channel_name TEXT NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS user_channel_rewards (telegram_user_id INTEGER, channel_id INTEGER, PRIMARY KEY (telegram_user_id, channel_id))')
@@ -332,7 +332,7 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         with sqlite3.connect(DB_FILE) as conn:
             conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
-            conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, created_at) VALUES (?, ?, ?)", (user_id, username, datetime.now()))
+            conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, ssh_password, created_at) VALUES (?, ?, ?, ?)", (user_id, username, password, datetime.now()))
             conn.commit()
 
         result_details = process.stdout
@@ -364,18 +364,18 @@ async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang_code = get_user_lang(user_id)
     with sqlite3.connect(DB_FILE) as conn:
-        accounts = conn.execute("SELECT ssh_username FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
+        accounts = conn.execute("SELECT ssh_username, ssh_password FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
     
     if not accounts:
         await update.message.reply_text(get_text('no_accounts_found', lang_code)); return
 
     response_parts = [get_text('your_accounts', lang_code)]
-    for (username,) in accounts:
+    for username, password in accounts:
         try:
             expiry_output = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True, stderr=subprocess.DEVNULL)
             expiry_line = next((line for line in expiry_output.split('\n') if "Account expires" in line), None)
             expiry = expiry_line.split(':', 1)[1].strip() if expiry_line else "N/A"
-            response_parts.append(get_text('account_details', lang_code).format(username=html.escape(username), expiry=html.escape(expiry)))
+            response_parts.append(get_text('account_details', lang_code).format(username=html.escape(username), password=html.escape(password), expiry=html.escape(expiry)))
         except Exception as e: print(f"Could not get expiry for {username}: {e}")
     
     await update.message.reply_text("\n\n".join(response_parts), parse_mode=ParseMode.HTML)
@@ -477,6 +477,17 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     data = query.data
     lang_code = get_user_lang(user_id)
+    
+    entry_points = {
+        'admin_add_channel_start': (ADD_CHANNEL_NAME, get_text('admin_add_channel_name_prompt', lang_code)),
+        'admin_create_code_start': (CREATE_CODE_NAME, get_text('admin_create_code_prompt_name', lang_code)),
+        'admin_edit_connection_info': (EDIT_HOSTNAME, get_text('admin_edit_hostname_prompt', lang_code)),
+    }
+
+    if data in entry_points:
+        state, text = entry_points[data]
+        await query.edit_message_text(text)
+        return state
 
     if data == 'admin_panel_main':
         keyboard = [
@@ -501,16 +512,6 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(get_text('admin_manage_codes_button', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
     elif data == 'admin_user_stats':
         await show_user_stats(update, context)
-    elif data == 'admin_edit_connection_info':
-        await query.edit_message_text(get_text('admin_edit_hostname_prompt', lang_code))
-        context.user_data.clear() 
-        return EDIT_HOSTNAME
-
-async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; await query.answer()
-    lang_code = get_user_lang(query.from_user.id)
-    await query.edit_message_text(get_text('admin_add_channel_name_prompt', lang_code))
-    return ADD_CHANNEL_NAME
 
 async def add_channel_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['channel_name'] = update.message.text
@@ -565,14 +566,7 @@ async def remove_channel_confirm(update: Update, context: ContextTypes.DEFAULT_T
         conn.execute("DELETE FROM reward_channels WHERE channel_id = ?", (channel_id,))
         conn.execute("DELETE FROM user_channel_rewards WHERE channel_id = ?", (channel_id,))
     await query.edit_message_text(get_text('admin_channel_removed_success', lang_code))
-    # After removing, show the updated list
     await remove_channel_start(update, context)
-
-async def create_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; await query.answer()
-    lang_code = get_user_lang(query.from_user.id)
-    await query.edit_message_text(get_text('admin_create_code_prompt_name', lang_code))
-    return CREATE_CODE_NAME
 
 async def receive_code_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['code_name'] = update.message.text
@@ -791,7 +785,7 @@ def main():
         **conv_defaults
     )
     create_code_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(create_code_start, pattern='^admin_create_code_start$')],
+        entry_points=[CallbackQueryHandler(admin_panel_callback, pattern='^admin_create_code_start$')],
         states={
             CREATE_CODE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_name)],
             CREATE_CODE_POINTS: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_points)],
@@ -801,7 +795,7 @@ def main():
         **conv_defaults
     )
     redeem_code_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(f"^{get_text('redeem_code_button', 'ar')}$") | filters.Regex(f"^{get_text('redeem_code_button', 'en')}$") & filters.ChatType.PRIVATE, redeem_code_start)],
+        entry_points=[MessageHandler(filters.Regex(f"^{re.escape(get_text('redeem_code_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('redeem_code_button', 'en'))}$") & filters.ChatType.PRIVATE, redeem_code_start)],
         states={REDEEM_CODE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, redeem_code_received)]},
         fallbacks=[CommandHandler('cancel', cancel_conversation)]
     )
@@ -818,7 +812,6 @@ def main():
     app.add_handler(edit_info_conv)
 
     # Add message handlers for main menu buttons
-    # FIX: Use re.escape to handle special characters in button text (like 💳)
     app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('get_ssh_button', 'en'))}$") & filters.ChatType.PRIVATE, get_ssh))
     app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('my_account_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('my_account_button', 'en'))}$") & filters.ChatType.PRIVATE, my_account))
     app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('balance_button', 'ar'))}$") | filters.Regex(f"^{re.escape(get_text('balance_button', 'en'))}$") & filters.ChatType.PRIVATE, balance_command))
