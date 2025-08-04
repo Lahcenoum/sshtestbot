@@ -23,7 +23,7 @@ SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 DB_FILE = 'ssh_bot_users.db'
 
 # --- قيم نظام النقاط ---
-COST_PER_ACCOUNT = 2
+COST_PER_ACCOUNT = 4
 DAILY_LOGIN_BONUS = 1
 INITIAL_POINTS = 2
 JOIN_BONUS = 4
@@ -209,7 +209,7 @@ def init_db():
         
         default_settings = {
             "hostname": "your.hostname.com", "ws_ports": "80, 8880, 8888, 2053",
-            "ssl_port": "443", "udpcustom_port": "65535", "admin_contact": ADMIN_CONTACT_INFO,
+            "ssl_port": "443", "udpcustom_port": "7300", "admin_contact": ADMIN_CONTACT_INFO,
             "payload": "your.default.payload"
         }
         for key, value in default_settings.items():
@@ -808,9 +808,8 @@ def main():
 
     conv_defaults = {'per_message': True, 'allow_reentry': True}
 
-    # Conversation Handlers
+    # Conversation Handlers (Add these FIRST to ensure specific entry points are prioritized)
     edit_info_conv = ConversationHandler(
-        # Corrected entry point for editing connection info
         entry_points=[CallbackQueryHandler(edit_connection_info_start, pattern='^admin_edit_connection_info$')],
         states={
             EDIT_HOSTNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, edit_hostname_received)],
@@ -835,7 +834,6 @@ def main():
         **conv_defaults
     )
     create_code_conv = ConversationHandler(
-        # Corrected entry point for creating new codes
         entry_points=[CallbackQueryHandler(create_code_start, pattern='^admin_create_code_start$')],
         states={
             CREATE_CODE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, receive_code_name)],
@@ -857,7 +855,7 @@ def main():
     app.add_handler(CommandHandler("admin", admin_panel, filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("language", language_command, filters.ChatType.PRIVATE))
 
-    # Add conversation handlers
+    # Add conversation handlers to the application
     app.add_handler(add_channel_conv)
     app.add_handler(create_code_conv)
     app.add_handler(redeem_code_conv)
@@ -871,28 +869,17 @@ def main():
     app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('earn_points_button', 'ar'))}|{re.escape(get_text('earn_points_button', 'en'))})$") & filters.ChatType.PRIVATE, earn_points_command))
     app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('contact_admin_button', 'ar'))}|{re.escape(get_text('contact_admin_button', 'en'))})$") & filters.ChatType.PRIVATE, contact_admin_command))
 
-    # Add callback query handlers
+    # Add callback query handlers (general ones AFTER specific conversation entry points)
     app.add_handler(CallbackQueryHandler(verify_join_callback, pattern='^verify_join$'))
     app.add_handler(CallbackQueryHandler(verify_reward_callback, pattern='^verify_r_'))
-    app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern='^admin_'))
     app.add_handler(CallbackQueryHandler(remove_channel_confirm, pattern='^remove_c_'))
     app.add_handler(CallbackQueryHandler(set_language_callback, pattern='^set_lang_'))
     app.add_handler(CallbackQueryHandler(lambda u,c: u.callback_query.answer(), pattern='^dummy$'))
+    # This general admin handler should be added AFTER specific admin conversation entry points
+    app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern='^admin_'))
 
     print("Bot is running with FULL features...")
     app.run_polling()
 
 if __name__ == '__main__':
     main()
-```
----
-
-**ملخص التعديلات:**
-
-* **`edit_info_conv`**: تم تغيير `entry_points` من `CallbackQueryHandler(admin_panel_callback, ...)` إلى `CallbackQueryHandler(edit_connection_info_start, ...)`.
-* **`create_code_conv`**: تم تغيير `entry_points` من `CallbackQueryHandler(admin_panel_callback, ...)` إلى `CallbackQueryHandler(create_code_start, ...)`.
-* **تصحيح `earn_points_command`**: أضفت فحصًا لـ `update.callback_query` قبل استخدامه لتجنب الأخطاء إذا تم استدعاء الدالة من رسالة عادية بدلاً من رد اتصال.
-
-الآن، يجب أن تستجيب أزرار لوحة تحكم المشرف بشكل صحيح وتبدأ المحادثات المخصصة لها.
-
-إذا واجهت أي مشكلات أخرى، فلا تتردد في إخبا
