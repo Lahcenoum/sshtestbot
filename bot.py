@@ -15,8 +15,8 @@ from telegram.error import BadRequest
 # =================================================================================
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN" 
-ADMIN_USER_ID = 5344028088 
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+ADMIN_USER_ID = 5344028088
 ADMIN_CONTACT_INFO = "@YourAdminUsername" 
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
@@ -505,17 +505,6 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     data = query.data
     lang_code = get_user_lang(user_id)
     
-    entry_points = {
-        'admin_add_channel_start': (ADD_CHANNEL_NAME, get_text('admin_add_channel_name_prompt', lang_code)),
-        'admin_create_code_start': (CREATE_CODE_NAME, get_text('admin_create_code_prompt_name', lang_code)),
-        'admin_edit_connection_info': (EDIT_HOSTNAME, get_text('admin_edit_hostname_prompt', lang_code)),
-    }
-
-    if data in entry_points:
-        state, text = entry_points[data]
-        await query.edit_message_text(text)
-        return state
-
     if data == 'admin_panel_main':
         keyboard = [
             [InlineKeyboardButton(get_text('admin_manage_rewards_button', lang_code), callback_data='admin_manage_rewards')],
@@ -539,6 +528,12 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(get_text('admin_manage_codes_button', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
     elif data == 'admin_user_stats':
         await show_user_stats(update, context)
+
+async def add_channel_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query; await query.answer()
+    lang_code = get_user_lang(query.from_user.id)
+    await query.edit_message_text(get_text('admin_add_channel_name_prompt', lang_code))
+    return ADD_CHANNEL_NAME
 
 async def add_channel_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['channel_name'] = update.message.text
@@ -595,6 +590,12 @@ async def remove_channel_confirm(update: Update, context: ContextTypes.DEFAULT_T
     await query.edit_message_text(get_text('admin_channel_removed_success', lang_code))
     await remove_channel_start(update, context)
 
+async def create_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query; await query.answer()
+    lang_code = get_user_lang(query.from_user.id)
+    await query.edit_message_text(get_text('admin_create_code_prompt_name', lang_code))
+    return CREATE_CODE_NAME
+
 async def receive_code_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['code_name'] = update.message.text
     lang_code = get_user_lang(update.effective_user.id)
@@ -623,6 +624,12 @@ async def receive_code_uses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     except ValueError:
         await update.message.reply_text(get_text('invalid_input', lang_code)); return CREATE_CODE_USES
+
+async def edit_connection_info_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query; await query.answer()
+    lang_code = get_user_lang(query.from_user.id)
+    await query.edit_message_text(get_text('admin_edit_hostname_prompt', lang_code))
+    return EDIT_HOSTNAME
 
 async def edit_hostname_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['hostname'] = update.message.text
