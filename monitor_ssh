@@ -1,25 +1,65 @@
 #!/bin/bash
-
 # ========================================================================
-#  سكريبت لمراقبة وحذف حسابات SSH التي تتجاوز الحد المسموح به من الاتصالات
+#  السكريبت المدمج لمراقبة اتصالات WebSocket و UDPCustom
+#  يقوم بحذف المستخدمين الذين يتجاوزون الحد المسموح به من إجمالي الاتصالات
 # ========================================================================
 
-# البادئة الخاصة بأسماء المستخدمين الذين أنشأهم البوت
-USER_PREFIX="sshdatbot"
-# هذا المتغير يمكن تعديله بواسطة سكريبت التثبيت الرئيسي
-CONNECTION_LIMIT=2
-# ملف لتسجيل عمليات الحذف
-LOG_FILE="/home/ssh_bot/multilogin_deletions.log"
+# ===================== الإعدادات =====================
+# الحد الأقصى لإجمالي الاتصالات (TCP + UDP) المسموح بها لكل مستخدم
+MAX_CONNECTIONS=2
 
-# الحصول على قائمة المستخدمين الذين تجاوزوا الحد المسموح به
-# awk -v limit="$CONNECTION_LIMIT" '$1 > limit {print $2}': هي الطريقة الصحيحة لتمرير المتغير إلى awk
-for USERNAME in $(who | awk '{print $1}' | grep "^$USER_PREFIX" | sort | uniq -c | awk -v limit="$CONNECTION_LIMIT" '$1 > limit {print $2}'); do
-    # التأكد من أن المستخدم موجود قبل محاولة حذفه
-    if id "$USERNAME" &>/dev/null; then
-        echo "[ $(date) ] Deleting user $USERNAME for exceeding connection limit of $CONNECTION_LIMIT." >> "$LOG_FILE"
-        # حذف المستخدم والمجلد الرئيسي الخاص به
-        userdel -r "$USERNAME"
+# المسار الكامل لملف قاعدة بيانات البوت
+# !!! تأكد من تعديل هذا المسار ليتوافق مع مكان ملفك !!!
+DB_FILE="/path/to/your/bot/ssh_bot_users.db"
+
+# ملف لتسجيل الإجراءات (سيتم إنشاؤه تلقائياً)
+LOG_FILE="/var/log/combined_monitor.log"
+
+# بورتات WebSocket للمراقبة (مفصولة بـ |)
+WS_PORTS_REGEX="80|8888|8080|8880"
+# ====================================================
+
+# دالة لكتابة سجلات
+log_action() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+# التحقق من وجود قاعدة البيانات
+if [ ! -f "$DB_FILE" ]; then
+    log_action "خطأ: ملف قاعدة البيانات غير موجود في المسار المحدد: $DB_FILE"
+    exit 1
+fi
+
+log_action "بدء فحص جميع الاتصالات (TCP & UDP)..."
+
+# الحصول على قائمة بأسماء المستخدمين النشطين من قاعدة البيانات
+USERS=$(sqlite3 "$DB_FILE" "SELECT DISTINCT ssh_username FROM ssh_accounts;")
+
+# المرور على كل مستخدم والتحقق من اتصالاته
+for USER in $USERS; do
+    # تجاهل إذا كان اسم المستخدم فارغاً
+    if [ -z "$USER" ]; then
+        continue
+    fi
+
+    # 1. حساب عدد اتصالات WebSocket (TCP) على البورتات المحددة
+    WS_CONNECTIONS=$(lsof -n -P -iTCP -u "$USER" | grep -E ":(${WS_PORTS_REGEX})$" | wc -l)
+
+    # 2. حساب عدد جميع اتصالات UDPCustom (UDP)
+    UDP_CONNECTIONS=$(lsof -n -P -iUDP -u "$USER" | wc -l)
+
+    # 3. حساب إجمالي الاتصالات
+    TOTAL_CONNECTIONS=$((WS_CONNECTIONS + UDP_CONNECTIONS))
+
+    # التحقق مما إذا كان المستخدم قد تجاوز الحد الإجمالي المسموح به
+    if [ "$TOTAL_CONNECTIONS" -gt "$MAX_CONNECTIONS" ]; then
+        log_action "تنبيه: المستخدم '$USER' لديه $TOTAL_CONNECTIONS اتصالات إجمالية ($WS_CONNECTIONS TCP, $UDP_CONNECTIONS UDP). الحد هو $MAX_CONNECTIONS. يتم الآن حذفه."
+        
+        # !! الإجراء: حذف المستخدم والمجلد الرئيسي الخاص به !!
+        userdel -r "$USER"
+        
+        log_action "تم حذف المستخدم '$USER' بنجاح."
     fi
 done
 
-exit 0
+log_action "اكتمل فحص الاتصالات."
