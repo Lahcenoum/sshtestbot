@@ -17,7 +17,7 @@ from telegram.error import BadRequest
 # =================================================================================
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 ADMIN_USER_ID = 5344028088
-ADMIN_CONTACT_INFO = "@YourAdminUsername" 
+ADMIN_CONTACT_INFO = "@YourAdminUsername"
 
 SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 DB_FILE = 'ssh_bot_users.db'
@@ -27,6 +27,7 @@ COST_PER_ACCOUNT = 4
 DAILY_LOGIN_BONUS = 1
 INITIAL_POINTS = 2
 JOIN_BONUS = 4
+REFERRAL_BONUS = 2  #  مكافأة الإحالة
 ACCOUNT_EXPIRY_DAYS = 2
 
 # Channel and Group links and IDs (for force join)
@@ -53,6 +54,7 @@ TEXTS = {
         "earn_points_button": "🎁 كسب النقاط",
         "redeem_code_button": "🎁 استرداد كود",
         "daily_button": "☀️ مكافأة يومية",
+        "referral_button": "👥 دعوة صديق", # زر جديد
         "contact_admin_button": "👨‍💻 تواصل مع الأدمن",
         "contact_admin_info": "للتواصل مع الأدمن، يرجى مراسلة: {contact_info}",
         "not_enough_points": "⚠️ ليس لديك نقاط كافية. التكلفة هي <b>{cost}</b> نقطة.",
@@ -71,7 +73,7 @@ TEXTS = {
         "no_accounts_found": "ℹ️ لم يتم العثور على أي حسابات نشطة مرتبطة بك.",
         "your_accounts": "<b>👤 حساباتك النشطة:</b>",
         "account_details_full": "🏷️ <b>اسم المستخدم:</b> <code>{username}</code>\n🔑 <b>كلمة المرور:</b> <code>{password}</code>\n🗓️ <b>تاريخ انتهاء الصلاحية:</b> <code>{expiry}</code>\n\n<b>Hostname:</b> <code>{hostname}</code>\n<b>Websocket Ports:</b> <code>{ws_ports}</code>\n<b>SSL Port:</b> <code>{ssl_port}</code>\n<b>UDPCUSTOM Port:</b> <code>{udpcustom_port}</code>\n\n<b>Payload:</b>\n<pre><code>{payload}</code></pre>",
-        "rewards_header": "انضم إلى هذه القنوات والمجموعات واحصل على نقاط!",
+        "rewards_header": "اختر طريقة لكسب النقاط:", # تم تعديل النص
         "verify_join_button": "✅ تحقق من الانضمام",
         "reward_success": "🎉 رائع! لقد حصلت على {points} نقطة.",
         "reward_fail": "❌ لم تنضم بعد. حاول مرة أخرى بعد الانضمام.",
@@ -81,6 +83,8 @@ TEXTS = {
         "redeem_invalid_code": "❌ هذا الكود غير صالح أو غير موجود.",
         "redeem_limit_reached": "❌ لقد وصل هذا الكود إلى الحد الأقصى من الاستخدام.",
         "redeem_already_used": "❌ لقد قمت بالفعل باستخدام هذا الكود.",
+        "referral_info": "👥 <b>نظام الإحالة</b>\n\nادعُ أصدقاءك للانضمام إلى البوت باستخدام رابط الإحالة الخاص بك، واحصل على <b>{bonus}</b> نقطة عن كل صديق ينضم!\n\n🔗 <b>رابطك الخاص:</b>\n<code>{link}</code>", # رسالة الإحالة
+        "referral_bonus_notification": "🎉 لقد حصلت على <b>{bonus}</b> نقطة من دعوة صديق جديد!", # إشعار للمُحيل
         "admin_panel_header": "⚙️ لوحة تحكم الأدمن",
         "admin_return_button": "⬅️ عودة",
         "admin_manage_rewards_button": "📢 إدارة قنوات الربح",
@@ -124,6 +128,7 @@ TEXTS = {
         "earn_points_button": "🎁 Earn Points",
         "redeem_code_button": "🎁 Redeem Code",
         "daily_button": "☀️ Daily Bonus",
+        "referral_button": "👥 Invite a Friend", # New button
         "contact_admin_button": "👨‍💻 Contact Admin",
         "contact_admin_info": "To contact the admin, please message: {contact_info}",
         "not_enough_points": "⚠️ You don't have enough points. The cost is <b>{cost}</b> points.",
@@ -142,7 +147,7 @@ TEXTS = {
         "no_accounts_found": "ℹ️ No active accounts associated with you were found.",
         "your_accounts": "<b>👤 Your Active Accounts:</b>",
         "account_details_full": "🏷️ <b>Username:</b> <code>{username}</code>\n🔑 <b>Password:</b> <code>{password}</code>\n🗓️ <b>Expiration Date:</b> <code>{expiry}</code>\n\n<b>Hostname:</b> <code>{hostname}</code>\n<b>Websocket Ports:</b> <code>{ws_ports}</code>\n<b>SSL Port:</b> <code>{ssl_port}</code>\n<b>UDPCUSTOM Port:</b> <code>{udpcustom_port}</code>\n\n<b>Payload:</b>\n<pre><code>{payload}</code></pre>",
-        "rewards_header": "Join these channels and groups to get points!",
+        "rewards_header": "Choose a way to earn points:", # Text updated
         "verify_join_button": "✅ Verify Join",
         "reward_success": "🎉 Great! You've received {points} points.",
         "reward_fail": "❌ You haven't joined yet. Try again after joining.",
@@ -152,6 +157,8 @@ TEXTS = {
         "redeem_invalid_code": "❌ This code is invalid or does not exist.",
         "redeem_limit_reached": "❌ This code has reached its maximum usage limit.",
         "redeem_already_used": "❌ You have already used this code.",
+        "referral_info": "👥 <b>Referral System</b>\n\nInvite your friends to join the bot using your referral link and get <b>{bonus}</b> points for each friend who joins!\n\n🔗 <b>Your Link:</b>\n<code>{link}</code>", # Referral message
+        "referral_bonus_notification": "🎉 You've received <b>{bonus}</b> points for inviting a new user!", # Notification for the referrer
         "admin_panel_header": "⚙️ Admin Control Panel",
         "admin_return_button": "⬅️ Back",
         "admin_manage_rewards_button": "📢 Manage Reward Channels",
@@ -199,7 +206,7 @@ def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, ssh_password TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE, referrer_id INTEGER)')
         cursor.execute('CREATE TABLE IF NOT EXISTS reward_channels (channel_id INTEGER PRIMARY KEY, channel_link TEXT NOT NULL, reward_points INTEGER NOT NULL, channel_name TEXT NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS user_channel_rewards (telegram_user_id INTEGER, channel_id INTEGER, PRIMARY KEY (telegram_user_id, channel_id))')
         cursor.execute('CREATE TABLE IF NOT EXISTS redeem_codes (code TEXT PRIMARY KEY, points INTEGER, max_uses INTEGER, current_uses INTEGER DEFAULT 0)')
@@ -216,13 +223,26 @@ def init_db():
             cursor.execute("INSERT OR IGNORE INTO connection_settings (key, value) VALUES (?, ?)", (key, value))
         conn.commit()
 
-def get_or_create_user(user_id, lang_code='ar'):
+async def get_or_create_user(user_id, lang_code='ar', referrer_id=None, context: ContextTypes.DEFAULT_TYPE = None):
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        if not cursor.execute("SELECT 1 FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone():
+        is_new_user = not cursor.execute("SELECT 1 FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
+        if is_new_user:
             today = date.today().isoformat()
-            cursor.execute("INSERT INTO users (telegram_user_id, points, language_code, created_date) VALUES (?, ?, ?, ?)", (user_id, INITIAL_POINTS, lang_code, today))
+            cursor.execute("INSERT INTO users (telegram_user_id, points, language_code, created_date, referrer_id) VALUES (?, ?, ?, ?, ?)", (user_id, INITIAL_POINTS, lang_code, today, referrer_id))
             conn.commit()
+            if referrer_id and context:
+                try:
+                    cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (REFERRAL_BONUS, referrer_id))
+                    conn.commit()
+                    referrer_lang = get_user_lang(referrer_id)
+                    await context.bot.send_message(
+                        chat_id=referrer_id,
+                        text=get_text('referral_bonus_notification', referrer_lang).format(bonus=REFERRAL_BONUS),
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    print(f"Error awarding referral bonus to {referrer_id}: {e}")
 
 def get_user_lang(user_id):
     with sqlite3.connect(DB_FILE) as conn:
@@ -279,7 +299,17 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False):
     user = update.effective_user
     message = update.message if not from_callback else update.callback_query.message
-    get_or_create_user(user.id)
+    
+    referrer_id = None
+    if context.args and context.args[0].startswith('ref_'):
+        try:
+            referrer_id = int(context.args[0].split('_')[1])
+            if referrer_id == user.id:
+                referrer_id = None
+        except (ValueError, IndexError):
+            referrer_id = None
+
+    await get_or_create_user(user.id, referrer_id=referrer_id, context=context)
     lang_code = get_user_lang(user.id)
 
     if not await check_membership(user.id, context):
@@ -291,6 +321,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
         await message.reply_text(get_text('force_join_prompt', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
+    # تم تعديل لوحة المفاتيح الرئيسية
     keyboard_layout = [
         [KeyboardButton(get_text('get_ssh_button', lang_code))],
         [KeyboardButton(get_text('balance_button', lang_code)), KeyboardButton(get_text('my_account_button', lang_code))],
@@ -303,8 +334,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
 @log_activity
 async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    # Ensure user exists in DB before proceeding
-    get_or_create_user(user_id) 
+    await get_or_create_user(user_id)
     lang_code = get_user_lang(user_id)
     
     with sqlite3.connect(DB_FILE) as conn:
@@ -676,7 +706,7 @@ async def edit_payload_received(update: Update, context: ContextTypes.DEFAULT_TY
     return ConversationHandler.END
 
 # =================================================================================
-# 7. User Rewards and Codes
+# 7. User Rewards, Codes, and Referrals
 # =================================================================================
 @log_activity
 async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -686,10 +716,8 @@ async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         all_channels = conn.execute("SELECT channel_id, channel_link, reward_points, channel_name FROM reward_channels").fetchall()
         claimed_ids = {row[0] for row in conn.execute("SELECT channel_id FROM user_channel_rewards WHERE telegram_user_id = ?", (user_id,))}
     
-    if not all_channels:
-        await update.message.reply_text(get_text('no_channels_available', lang_code)); return
-
     keyboard = []
+    #  إضافة قنوات الربح
     for cid, link, points, name in all_channels:
         if cid in claimed_ids:
             button_text = f"✅ {name}"
@@ -699,7 +727,12 @@ async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             keyboard.append([InlineKeyboardButton(button_text, url=link)])
             keyboard.append([InlineKeyboardButton(get_text('verify_join_button', lang_code), callback_data=f"verify_r_{cid}_{points}")])
     
-    # Check if update.callback_query exists before using it
+    # إضافة فاصل وزر الإحالة
+    if all_channels: #  إضافة فاصل فقط إذا كانت هناك قنوات
+        keyboard.append([InlineKeyboardButton("-----------", callback_data="dummy")])
+    keyboard.append([InlineKeyboardButton(get_text('referral_button', lang_code), callback_data='get_referral_link')])
+
+
     if update.callback_query:
         reply_func = update.callback_query.edit_message_text
     else:
@@ -766,6 +799,23 @@ async def redeem_code_received(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(get_text('redeem_success', lang_code).format(points=points, new_balance=new_balance), parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
+# دالة جديدة للرد على طلب رابط الإحالة
+async def get_referral_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    lang_code = get_user_lang(user_id)
+    bot_username = (await context.bot.get_me()).username
+    referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+    
+    message_text = get_text('referral_info', lang_code).format(
+        bonus=REFERRAL_BONUS,
+        link=referral_link
+    )
+    # إرسال الرابط في رسالة جديدة
+    await query.message.reply_text(message_text, parse_mode=ParseMode.HTML)
+
+
 # =================================================================================
 # 8. Callbacks and Conversations
 # =================================================================================
@@ -808,7 +858,6 @@ def main():
 
     conv_defaults = {'per_message': True, 'allow_reentry': True}
 
-    # Conversation Handlers (Add these FIRST to ensure specific entry points are prioritized)
     edit_info_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(edit_connection_info_start, pattern='^admin_edit_connection_info$')],
         states={
@@ -850,18 +899,15 @@ def main():
         **conv_defaults
     )
 
-    # Add command handlers
     app.add_handler(CommandHandler("start", start, filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("admin", admin_panel, filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("language", language_command, filters.ChatType.PRIVATE))
 
-    # Add conversation handlers to the application
     app.add_handler(add_channel_conv)
     app.add_handler(create_code_conv)
     app.add_handler(redeem_code_conv)
     app.add_handler(edit_info_conv)
 
-    # Add message handlers for main menu buttons (simplified Regex as discussed previously)
     app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('get_ssh_button', 'ar'))}|{re.escape(get_text('get_ssh_button', 'en'))})$") & filters.ChatType.PRIVATE, get_ssh))
     app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('my_account_button', 'ar'))}|{re.escape(get_text('my_account_button', 'en'))})$") & filters.ChatType.PRIVATE, my_account))
     app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('balance_button', 'ar'))}|{re.escape(get_text('balance_button', 'en'))})$") & filters.ChatType.PRIVATE, balance_command))
@@ -869,16 +915,16 @@ def main():
     app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('earn_points_button', 'ar'))}|{re.escape(get_text('earn_points_button', 'en'))})$") & filters.ChatType.PRIVATE, earn_points_command))
     app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('contact_admin_button', 'ar'))}|{re.escape(get_text('contact_admin_button', 'en'))})$") & filters.ChatType.PRIVATE, contact_admin_command))
 
-    # Add callback query handlers (general ones AFTER specific conversation entry points)
     app.add_handler(CallbackQueryHandler(verify_join_callback, pattern='^verify_join$'))
     app.add_handler(CallbackQueryHandler(verify_reward_callback, pattern='^verify_r_'))
     app.add_handler(CallbackQueryHandler(remove_channel_confirm, pattern='^remove_c_'))
     app.add_handler(CallbackQueryHandler(set_language_callback, pattern='^set_lang_'))
+    # معالج جديد لزر الإحالة المدمج
+    app.add_handler(CallbackQueryHandler(get_referral_link_callback, pattern='^get_referral_link$'))
     app.add_handler(CallbackQueryHandler(lambda u,c: u.callback_query.answer(), pattern='^dummy$'))
-    # This general admin handler should be added AFTER specific admin conversation entry points
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern='^admin_'))
 
-    print("Bot is running with FULL features...")
+    print("Bot is running with FULL features including referrals...")
     app.run_polling()
 
 if __name__ == '__main__':
