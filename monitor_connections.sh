@@ -1,15 +1,14 @@
 #!/bin/bash
 # ========================================================================
-#  السكريبت المدمج لمراقبة اتصالات WebSocket و UDPCustom
+#  السكريبت المدمج لمراقبة اتصالات WebSocket و UDPCustom (نسخة مصححة)
 #  يقوم بحذف المستخدمين الذين يتجاوزون الحد المسموح به من إجمالي الاتصالات
 # ========================================================================
 
 # ===================== الإعدادات =====================
 # الحد الأقصى لإجمالي الاتصالات (TCP + UDP) المسموح بها لكل مستخدم
-MAX_CONNECTIONS=1
+MAX_CONNECTIONS=2
 
 # المسار الكامل لملف قاعدة بيانات البوت
-# !!! تم تحديث المسار بناءً على معلوماتك !!!
 DB_FILE="/home/ssh_bot/ssh_bot_users.db"
 
 # ملف لتسجيل الإجراءات (سيتم إنشاؤه تلقائياً)
@@ -43,7 +42,8 @@ for USER in $USERS; do
     fi
 
     # 1. حساب عدد اتصالات WebSocket (TCP) على البورتات المحددة
-    WS_CONNECTIONS=$(lsof -n -P -iTCP -u "$USER" | grep -E ":(${WS_PORTS_REGEX})$" | wc -l)
+    # !! تم تصحيح أمر grep هنا !!
+    WS_CONNECTIONS=$(lsof -n -P -iTCP -u "$USER" | grep -E "TCP.*:(${WS_PORTS_REGEX})->" | wc -l)
 
     # 2. حساب عدد جميع اتصالات UDPCustom (UDP)
     UDP_CONNECTIONS=$(lsof -n -P -iUDP -u "$USER" | wc -l)
@@ -55,7 +55,7 @@ for USER in $USERS; do
     if [ "$TOTAL_CONNECTIONS" -gt "$MAX_CONNECTIONS" ]; then
         log_action "تنبيه: المستخدم '$USER' لديه $TOTAL_CONNECTIONS اتصالات إجمالية ($WS_CONNECTIONS TCP, $UDP_CONNECTIONS UDP). الحد هو $MAX_CONNECTIONS. يتم الآن حذفه."
         
-        # !! الإجراء: حذف المستخدم والمجلد الرئيسي الخاص به !!
+        # الإجراء: حذف المستخدم والمجلد الرئيسي الخاص به
         userdel -r "$USER"
         
         log_action "تم حذف المستخدم '$USER' بنجاح."
