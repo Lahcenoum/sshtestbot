@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version 7: Respects existing requirements.txt and ensures v2ray-api is included.
+# Version 8: Final robust version. Bypasses git clone for v2ray-api entirely.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
@@ -212,27 +212,17 @@ python3 -m venv venv
     source venv/bin/activate
     echo "  - تحديث pip..."
     pip install --upgrade pip
+    
+    echo "  - تثبيت المكتبات الأساسية..."
+    pip install python-telegram-bot flask grpcio psutil pytz
 
-    # التحقق من وجود ملف المتطلبات واستخدامه
-    if [ -f "requirements.txt" ]; then
-        green "  - ✅ تم العثور على ملف requirements.txt. سيتم استخدامه."
-        # التأكد من أن مكتبة v2ray-api موجودة في الملف لحل المشكلة الأساسية
-        if ! grep -q "v2ray-api" "requirements.txt"; then
-            yellow "  - ⚠️ مكتبة v2ray-api غير موجودة في الملف. سيتم إضافتها الآن..."
-            echo "git+https://github.com/onuratakan/v2ray-api.git" >> requirements.txt
-        fi
-        pip install -r requirements.txt
-    else
-        # إذا لم يكن الملف موجودًا، قم بإنشائه
-        yellow "  - ⚠️ لم يتم العثور على requirements.txt. سيتم إنشاء ملف أساسي."
-        cat > "$PROJECT_DIR/requirements.txt" << EOL
-python-telegram-bot
-flask
-grpcio
-git+https://github.com/onuratakan/v2ray-api.git
-EOL
-        pip install -r requirements.txt
-    fi
+    echo "  - تثبيت مكتبة v2ray-api يدويًا لتجنب مشاكل git..."
+    wget https://github.com/onuratakan/v2ray-api/archive/refs/heads/master.zip -O v2ray-api.zip
+    unzip -q v2ray-api.zip
+    pip install ./v2ray-api-master/
+    rm v2ray-api.zip
+    rm -rf v2ray-api-master
+    green "  - ✅ تم تثبيت جميع المكتبات بنجاح."
 )
 
 # 15. إعداد وتشغيل الخدمات
