@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version 5: Final clean-up. Ensured no non-breaking spaces or hidden characters.
+# Version 7: Respects existing requirements.txt and ensures v2ray-api is included.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
@@ -134,7 +134,6 @@ chown -R www-data:www-data /var/www/html
 
 # 11. إصدار شهادة TLS
 echo -e "\n[11/15] 🔒 إصدار شهادة TLS..."
-# إعداد Nginx المؤقت على المنفذ 80
 cat >/etc/nginx/sites-available/xray_temp <<EOF
 server { listen 80; server_name ${V2RAY_DOMAIN}; root /var/www/html; }
 EOF
@@ -142,7 +141,6 @@ ln -sf /etc/nginx/sites-available/xray_temp /etc/nginx/sites-enabled/xray_temp
 rm -f /etc/nginx/sites-enabled/default || true
 ufw allow 80/tcp >/dev/null 2>&1
 systemctl restart nginx
-# استصدار الشهادة
 apt-get install -y certbot
 certbot certonly --webroot -w /var/www/html -d "$V2RAY_DOMAIN" -m "$EMAIL" --agree-tos --no-eff-email -n || {
     red "فشل إصدار الشهادة. تأكد أن الدومين يشير إلى IP هذا السيرفر وأن المنفذ 80 مفتوح."; exit 1
@@ -170,7 +168,6 @@ systemctl enable xray && systemctl restart xray
 
 # 13. إعداد Nginx النهائي و سكربت مراقبة V2Ray
 echo -e "\n[13/15] 🔗 إعداد Nginx النهائي ومراقبة اتصالات V2Ray..."
-# إعداد Nginx
 cat >/etc/nginx/sites-available/xray <<NGINX
 map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
 server { listen 80; server_name ${V2RAY_DOMAIN}; return 301 https://\$host\$request_uri; }
@@ -195,7 +192,6 @@ ln -sf /etc/nginx/sites-available/xray /etc/nginx/sites-enabled/xray
 rm -f /etc/nginx/sites-enabled/xray_temp || true
 ufw allow 443/tcp >/dev/null 2>&1
 systemctl reload nginx
-# إعداد سكربت المراقبة
 if [ -f "monitor_v2ray.sh" ]; then
     mv "monitor_v2ray.sh" "/usr/local/bin/"
     chmod +x "/usr/local/bin/monitor_v2ray.sh"
@@ -216,31 +212,31 @@ python3 -m venv venv
     source venv/bin/activate
     echo "  - تحديث pip..."
     pip install --upgrade pip
-    if [ -f "requirements.txt" ]; then
-        echo "  - تثبيت المكتبات من requirements.txt..."
-        pip install -r requirements.txt
-        green "  - ✅ تم تثبيت المكتبات من requirements.txt."
-    else
-        # تثبيت المكتبات الأساسية
-        echo "  - تثبيت المكتبات الأساسية (python-telegram-bot, flask, grpcio)..."
-        pip install python-telegram-bot flask grpcio
-        
-        # تثبيت v2ray-api يدويًا لتجنب مشاكل الشبكة/git
-        echo "  - 📥 تحميل وتثبيت مكتبة v2ray-api يدويًا..."
-        wget https://github.com/onuratakan/v2ray-api/archive/refs/heads/master.zip -O v2ray-api.zip
-        unzip -q v2ray-api.zip
-        pip install ./v2ray-api-master/
-        rm v2ray-api.zip
-        rm -rf v2ray-api-master
-        green "  - ✅ تم تثبيت مكتبة v2ray-api بنجاح."
 
-        yellow "  - ⚠️ لم يتم العثور على requirements.txt، تم تثبيت المكتبات الأساسية."
+    # التحقق من وجود ملف المتطلبات واستخدامه
+    if [ -f "requirements.txt" ]; then
+        green "  - ✅ تم العثور على ملف requirements.txt. سيتم استخدامه."
+        # التأكد من أن مكتبة v2ray-api موجودة في الملف لحل المشكلة الأساسية
+        if ! grep -q "v2ray-api" "requirements.txt"; then
+            yellow "  - ⚠️ مكتبة v2ray-api غير موجودة في الملف. سيتم إضافتها الآن..."
+            echo "git+https://github.com/onuratakan/v2ray-api.git" >> requirements.txt
+        fi
+        pip install -r requirements.txt
+    else
+        # إذا لم يكن الملف موجودًا، قم بإنشائه
+        yellow "  - ⚠️ لم يتم العثور على requirements.txt. سيتم إنشاء ملف أساسي."
+        cat > "$PROJECT_DIR/requirements.txt" << EOL
+python-telegram-bot
+flask
+grpcio
+git+https://github.com/onuratakan/v2ray-api.git
+EOL
+        pip install -r requirements.txt
     fi
 )
 
 # 15. إعداد وتشغيل الخدمات
 echo -e "\n[15/15] 🚀 إعداد وتشغيل الخدمات النهائية..."
-# خدمة البوت
 cat > /etc/systemd/system/ssh_bot.service << EOL
 [Unit]
 Description=Telegram SSH & V2Ray Bot Service
@@ -258,7 +254,6 @@ RestartSec=5
 WantedBy=multi-user.target
 EOL
 
-# خدمة لوحة التحكم
 cat > /etc/systemd/system/ssh_bot_dashboard.service << EOL
 [Unit]
 Description=Telegram SSH & V2Ray Bot Dashboard
