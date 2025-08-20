@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version 8: Final robust version. Bypasses git clone for v2ray-api entirely.
+# Version 9: Corrected the GitHub download URL from master.zip to main.zip.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
@@ -217,11 +217,11 @@ python3 -m venv venv
     pip install python-telegram-bot flask grpcio psutil pytz
 
     echo "  - تثبيت مكتبة v2ray-api يدويًا لتجنب مشاكل git..."
-    wget https://github.com/onuratakan/v2ray-api/archive/refs/heads/master.zip -O v2ray-api.zip
+    wget https://github.com/onuratakan/v2ray-api/archive/refs/heads/main.zip -O v2ray-api.zip
     unzip -q v2ray-api.zip
-    pip install ./v2ray-api-master/
+    pip install ./v2ray-api-main/
     rm v2ray-api.zip
-    rm -rf v2ray-api-master
+    rm -rf v2ray-api-main
     green "  - ✅ تم تثبيت جميع المكتبات بنجاح."
 )
 
