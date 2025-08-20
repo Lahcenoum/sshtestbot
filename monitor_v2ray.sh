@@ -1,6 +1,7 @@
 #!/bin/bash
 # ========================================================================
-#  سكريبت لمراقبة اتصالات V2Ray وحذف المستخدمين الذين يتجاوزون الحد
+#  سكريبت مراقبة V2Ray (الحل الأفضل بواجهة API)
+#  يحذف المستخدمين المخالفين فوراً بدون إعادة تشغيل الخدمة
 # ========================================================================
 
 # ===================== الإعدادات =====================
@@ -13,6 +14,11 @@ V2RAY_CONFIG="/usr/local/etc/xray/config.json"
 V2RAY_LOG="/var/log/xray/access.log"
 # ملف لتسجيل عمليات الحذف
 DELETION_LOG="/var/log/xray/deletions.log"
+
+#  إعدادات الـ API
+# تأكد من أن هذه القيم تطابق الإعدادات في ملف config.json
+API_SERVER="127.0.0.1:10085"
+VLESS_INBOUND_TAG="vless-inbound"
 # ====================================================
 
 # دالة لكتابة سجلات
@@ -22,73 +28,65 @@ log_action() {
 
 # التحقق من وجود ملف السجل
 if [ ! -f "$V2RAY_LOG" ]; then
-    log_action "خطأ: ملف السجل $V2RAY_LOG غير موجود. تأكد من تفعيله في إعدادات Xray."
+    log_action "خطأ: ملف السجل $V2RAY_LOG غير موجود."
     exit 1
 fi
 
-# استخراج معرفات المستخدمين (UUIDs) المخالفين
-# يبحث في سجلات الدقيقتين الأخيرتين ويعدّ عدد الـ IPs الفريدة لكل UUID
-EXCEEDED_USERS=$(tail -n 5000 "$V2RAY_LOG" | \
+# استخراج البريد الإلكتروني للمستخدمين المخالفين من سجلات آخر دقيقتين
+EXCEEDED_USERS_EMAIL=$(tail -n 5000 "$V2RAY_LOG" | \
     grep "accepted" | \
     awk -v time_limit=$(date -d '2 minutes ago' +%s) '
     {
-        # Extract IP and UUID
-        ip = ""; uuid = "";
+        ip = ""; email = "";
         for (i=1; i<=NF; i++) {
-            if ($i == "email:") {
-                uuid = $(i+1);
-            }
+            if ($i == "email:") { email = $(i+1); }
             if (match($i, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/)) {
-                ip = $i;
-                sub(/:[0-9]+$/, "", ip);
+                ip = $i; sub(/:[0-9]+$/, "", ip);
             }
         }
         
-        # Extract timestamp and check if it is within the last 2 minutes
-        gsub(/"/, "", $1);
-        gsub(/\[|\]/, "", $2);
+        gsub(/"/, "", $1); gsub(/\[|\]/, "", $2);
         split($2, dt, ":");
         event_time_str = dt[1]" "dt[2]":"dt[3]":"dt[4];
         cmd = "date -d \"" event_time_str "\" +%s";
-        cmd | getline event_time;
-        close(cmd);
+        cmd | getline event_time; close(cmd);
 
-        if (event_time > time_limit && uuid != "" && ip != "") {
-            print uuid, ip
+        if (event_time > time_limit && email != "" && ip != "") {
+            print email, ip
         }
     }' | \
     sort | uniq | \
     awk '{ count[$1]++ } END { for (user in count) if (count[user] > '"$CONNECTION_LIMIT"') print user }')
 
-
 # إذا لم يكن هناك مستخدمون مخالفون، قم بالخروج
-if [ -z "$EXCEEDED_USERS" ]; then
+if [ -z "$EXCEEDED_USERS_EMAIL" ]; then
     exit 0
 fi
 
 CONFIG_CHANGED=false
 
-# المرور على كل مستخدم مخالف وحذفه
-for USER_ID in $EXCEEDED_USERS; do
-    # التأكد من أن المستخدم لا يزال موجوداً في الملف قبل محاولة حذفه
-    if jq -e '(.inbounds[] | select(.protocol == "vless") .settings.clients[] | select(.id == "'$USER_ID'"))' "$V2RAY_CONFIG" > /dev/null; then
-        log_action "تنبيه: المستخدم $USER_ID تجاوز الحد المسموح به ($CONNECTION_LIMIT). يتم الآن حذفه."
-        
-        # استخدام jq لحذف المستخدم من الملف
-        jq '(.inbounds[] | select(.protocol == "vless") .settings.clients) |= map(select(.id != "'$USER_ID'"))' "$V2RAY_CONFIG" > "${V2RAY_CONFIG}.tmp" && mv "${V2RAY_CONFIG}.tmp" "$V2RAY_CONFIG"
-        
-        CONFIG_CHANGED=true
+for USER_EMAIL in $EXCEEDED_USERS_EMAIL; do
+    # استخراج الـ UUID المرتبط بالبريد الإلكتروني من ملف الإعدادات
+    USER_ID=$(jq -r '.inbounds[] | select(.tag=="'$VLESS_INBOUND_TAG'") | .settings.clients[] | select(.email=="'$USER_EMAIL'") | .id' "$V2RAY_CONFIG")
+
+    if [ -z "$USER_ID" ]; then
+        log_action "لم يتم العثور على UUID للبريد الإلكتروني $USER_EMAIL في ملف الإعدادات."
+        continue
     fi
+
+    log_action "تنبيه: المستخدم $USER_EMAIL تجاوز الحد. يتم الآن حذفه (UUID: $USER_ID)."
+    
+    # الخطوة 1: الحذف الفوري من الخدمة باستخدام الـ API (بدون إعادة تشغيل)
+    /usr/local/bin/xray api handlers remove --server="$API_SERVER" --inbound="$VLESS_INBOUND_TAG" --email="$USER_EMAIL" > /dev/null 2>&1
+    
+    # الخطوة 2: الحذف من ملف الإعدادات لضمان عدم عودته بعد أي إعادة تشغيل مستقبلية
+    jq '(.inbounds[] | select(.tag=="'$VLESS_INBOUND_TAG'") .settings.clients) |= map(select(.id != "'$USER_ID'"))' "$V2RAY_CONFIG" > "${V2RAY_CONFIG}.tmp" && mv "${V2RAY_CONFIG}.tmp" "$V2RAY_CONFIG"
+    
+    CONFIG_CHANGED=true
 done
 
-# إذا تم إجراء تغييرات، أعد تشغيل Xray
 if [ "$CONFIG_CHANGED" = true ]; then
-    log_action "تم حذف مستخدم واحد أو أكثر. إعادة تشغيل Xray..."
-    if systemctl restart xray; then
-        log_action "تمت إعادة تشغيل Xray بنجاح."
-    else
-        log_action "فشل في إعادة تشغيل Xray."
-    fi
+    log_action "تم حذف مستخدم واحد أو أكثر بنجاح بدون انقطاع الخدمة."
 fi
 
 exit 0
