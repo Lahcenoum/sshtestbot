@@ -216,12 +216,19 @@ python3 -m venv venv
     echo "  - تثبيت المكتبات الأساسية..."
     pip install python-telegram-bot flask grpcio psutil pytz
 
-    echo "  - تثبيت مكتبة v2ray-api يدويًا لتجنب مشاكل git..."
-    wget https://github.com/onuratakan/v2ray-api/archive/refs/heads/main.zip -O v2ray-api.zip
-    unzip -q v2ray-api.zip
-    pip install ./v2ray-api-main/
-    rm v2ray-api.zip
-    rm -rf v2ray-api-main
+    echo "  - محاولة تثبيت مكتبة v2ray-api..."
+    if pip install v2ray-api; then
+        green "  - ✅ تم تثبيت مكتبة v2ray-api من PyPI."
+    else
+        echo "  - ⚠️ التثبيت من PyPI فشل، المحاولة عبر GitHub..."
+        if pip install git+https://github.com/onuratakan/v2ray-api.git; then
+            green "  - ✅ تم تثبيت مكتبة v2ray-api من GitHub."
+        else
+            red "❌ فشل تثبيت مكتبة v2ray-api من كل المصادر."
+            exit 1
+        fi
+    fi
+
     green "  - ✅ تم تثبيت جميع المكتبات بنجاح."
 )
 
