@@ -1,8 +1,12 @@
 #!/bin/bash
+# Version 3: Corrected crontab syntax and added safety measures.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
 # ========================================================================
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
 
 # --- إعدادات أساسية ---
 GIT_REPO_URL="https://github.com/Lahcenoum/sshtestbot.git"
@@ -30,8 +34,8 @@ echo "=================================================="
 
 # الخطوة 0: حذف أي تثبيت قديم
 echo -e "\n[0/15] 🗑️ حذف أي تثبيت قديم..."
-systemctl stop ssh_bot.service ssh_bot_dashboard.service xray >/dev/null 2>&1
-systemctl disable ssh_bot.service ssh_bot_dashboard.service xray >/dev/null 2>&1
+systemctl stop ssh_bot.service ssh_bot_dashboard.service xray >/dev/null 2>&1 || true
+systemctl disable ssh_bot.service ssh_bot_dashboard.service xray >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/ssh_bot.service
 rm -f /etc/systemd/system/ssh_bot_dashboard.service
 rm -rf "$PROJECT_DIR"
