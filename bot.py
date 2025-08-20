@@ -44,13 +44,13 @@ VLESS_INBOUND_TAG = "vless-inbound" #  يجب أن يطابق الـ tag في م
 COST_PER_ACCOUNT = 2
 DAILY_LOGIN_BONUS = 1
 INITIAL_POINTS = 2
-JOIN_BONUS = 4
+JOIN_BONUS = 0
 REFERRAL_BONUS = 2
 
 # --- إعدادات القنوات ---
 REQUIRED_CHANNEL_ID = -1001932589296
 REQUIRED_GROUP_ID = -1002218671728
-CHANNEL_LINK = "https://t.me/FASTVPSVIP"
+CHANNEL_LINK = "https://t.me/CLOUDVIP"
 GROUP_LINK = "https://t.me/dgtliA"
 
 # Conversation handler states
