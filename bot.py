@@ -14,6 +14,10 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Messa
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 
+#  مكتبات جديدة للـ API
+from v2ray_api.api import V2RayAPI
+from v2ray_api.transport.grpc import GrpcTransport
+
 # =================================================================================
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
@@ -28,12 +32,16 @@ SSH_ACCOUNT_EXPIRY_DAYS = 2
 
 # --- إعدادات V2Ray ---
 V2RAY_CONFIG_PATH = "/usr/local/etc/v2ray/config.json"
-V2RAY_SERVER_ADDRESS = "your.domain.com"  #  مهم: استبدل بالدومين أو IP الخاص بك
+V2RAY_SERVER_ADDRESS = "your.domain.com"
 V2RAY_SERVER_PORT = 443
-V2RAY_WS_PATH = "/your-ws-path" #  مهم: استبدل بمسار WebSocket الخاص بك
+V2RAY_WS_PATH = "/your-ws-path"
+#  إعدادات جديدة للـ API
+V2RAY_API_HOST = "127.0.0.1"
+V2RAY_API_PORT = 10085
+VLESS_INBOUND_TAG = "vless-inbound" #  يجب أن يطابق الـ tag في ملف config.json
 
 # --- قيم نظام النقاط ---
-COST_PER_ACCOUNT = 4
+COST_PER_ACCOUNT = 2
 DAILY_LOGIN_BONUS = 1
 INITIAL_POINTS = 2
 JOIN_BONUS = 4
@@ -231,7 +239,7 @@ def write_v2ray_config(config_data):
     with open(V2RAY_CONFIG_PATH, 'w') as f:
         json.dump(config_data, f, indent=4)
 
-def restart_v2ray():
+def restart_v2ray(): #  يستخدم كخطة بديلة فقط
     try:
         subprocess.run(["systemctl", "restart", "v2ray"], check=True)
         return True
@@ -378,10 +386,11 @@ async def create_vless_account(update: Update, context: ContextTypes.DEFAULT_TYP
     user_email = f"user-{user_id}"
 
     try:
+        # الخطوة 1 و 2: قراءة وتحديث ملف الإعدادات
         config = read_v2ray_config()
         vless_inbound_found = False
         for inbound in config['inbounds']:
-            if inbound.get('protocol') == 'vless':
+            if inbound.get('tag') == VLESS_INBOUND_TAG:
                 if 'clients' not in inbound['settings']:
                     inbound['settings']['clients'] = []
                 inbound['settings']['clients'].append({"id": new_uuid, "email": user_email})
@@ -392,12 +401,22 @@ async def create_vless_account(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.edit_message_text(text=get_text('v2ray_creation_error', lang_code))
             return
 
+        # الخطوة 3: حفظ التغييرات في الملف (للاستمرارية والمراقبة)
         write_v2ray_config(config)
 
-        if not restart_v2ray():
-            await query.edit_message_text(text=get_text('v2ray_creation_error', lang_code))
-            return
+        # الخطوة 4: استخدام الـ API لإضافة المستخدم بدون إعادة تشغيل
+        try:
+            transport = GrpcTransport(V2RAY_API_HOST, V2RAY_API_PORT)
+            api = V2RayAPI(transport)
+            api.add_user(VLESS_INBOUND_TAG, new_uuid, user_email, level=0, security_type="auto")
+            transport.close()
+        except Exception as api_error:
+            print(f"V2Ray API Error: {api_error}. Could not add user dynamically.")
+            print("Falling back to restarting V2Ray service...")
+            if not restart_v2ray():
+                 raise Exception("API and restart fallback both failed.")
 
+        # الخطوة 5: حفظ في قاعدة البيانات وإرسال الرد
         with sqlite3.connect(DB_FILE) as conn:
             conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
             conn.execute("INSERT INTO v2ray_accounts (telegram_user_id, uuid, created_at) VALUES (?, ?, ?)", (user_id, new_uuid, datetime.now()))
