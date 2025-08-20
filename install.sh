@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version 9: Corrected the GitHub download URL from master.zip to main.zip.
+# Final Version: Uses the alternative xray_api library.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
@@ -213,21 +213,9 @@ python3 -m venv venv
     echo "  - تحديث pip..."
     pip install --upgrade pip
     
-    echo "  - تثبيت المكتبات الأساسية..."
+    echo "  - تثبيت المكتبات الأساسية والمكتبة البديلة xray_api..."
     pip install python-telegram-bot flask grpcio psutil pytz
-
-    echo "  - محاولة تثبيت مكتبة v2ray-api..."
-    if pip install v2ray-api; then
-        green "  - ✅ تم تثبيت مكتبة v2ray-api من PyPI."
-    else
-        echo "  - ⚠️ التثبيت من PyPI فشل، المحاولة عبر GitHub..."
-        if pip install git+https://github.com/onuratakan/v2ray-api.git; then
-            green "  - ✅ تم تثبيت مكتبة v2ray-api من GitHub."
-        else
-            red "❌ فشل تثبيت مكتبة v2ray-api من كل المصادر."
-            exit 1
-        fi
-    fi
+    pip install git+https://github.com/wi1dcard/xray_api.git
 
     green "  - ✅ تم تثبيت جميع المكتبات بنجاح."
 )
