@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version 3: Corrected crontab syntax and added safety measures.
+# Final Merged Version: Combines the working base with V2Ray features and all fixes.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
@@ -214,19 +214,22 @@ echo -e "\n[14/15] 🐍 إعداد البيئة الافتراضية وتثبي�
 python3 -m venv venv
 (
   source venv/bin/activate
-  pip install --upgrade pip > /dev/null 2>&1
+  echo "  - تحديث pip..."
+  pip install --upgrade pip
   if [ -f "requirements.txt" ]; then
+    echo "  - تثبيت المكتبات من requirements.txt..."
     pip install -r requirements.txt
     green "  - ✅ تم تثبيت المكتبات من requirements.txt."
   else
     # تثبيت المكتبات الأساسية
-    pip install python-telegram-bot flask grpcio > /dev/null 2>&1
+    echo "  - تثبيت المكتبات الأساسية (python-telegram-bot, flask, grpcio)..."
+    pip install python-telegram-bot flask grpcio
     
     # تثبيت v2ray-api يدويًا لتجنب مشاكل الشبكة/git
     echo "  - 📥 تحميل وتثبيت مكتبة v2ray-api يدويًا..."
-    wget -q https://github.com/onuratakan/v2ray-api/archive/refs/heads/master.zip -O v2ray-api.zip
+    wget https://github.com/onuratakan/v2ray-api/archive/refs/heads/master.zip -O v2ray-api.zip
     unzip -q v2ray-api.zip
-    pip install ./v2ray-api-master/ > /dev/null 2>&1
+    pip install ./v2ray-api-master/
     rm v2ray-api.zip
     rm -rf v2ray-api-master
     green "  - ✅ تم تثبيت مكتبة v2ray-api بنجاح."
