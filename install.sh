@@ -86,7 +86,7 @@ echo -e "\n[7/15] ⏳ إعداد سكربت الحذف التلقائي لمست
 if [ -f "delete_expired_users.sh" ]; then
     mv "delete_expired_users.sh" "/usr/local/bin/"
     chmod +x "/usr/local/bin/delete_expired_users.sh"
-    (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/delete_expired_users.sh" ; echo "0 0 * * * /usr/local/bin/delete_expired_users.sh") | crontab -
+    { crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/delete_expired_users.sh"; echo "0 0 * * * /usr/local/bin/delete_expired_users.sh"; } | crontab -
     green "  - ✅ تم إعداد مهمة حذف الحسابات منتهية الصلاحية."
 else
     yellow "  - ⚠️ تحذير: لم يتم العثور على 'delete_expired_users.sh'."
@@ -98,7 +98,7 @@ if [ -f "monitor_connections.sh" ]; then
     sed -i "s/CONNECTION_LIMIT=[0-9]\+/CONNECTION_LIMIT=$SSH_CONNECTION_LIMIT/" "monitor_connections.sh"
     mv "monitor_connections.sh" "/usr/local/bin/"
     chmod +x "/usr/local/bin/monitor_connections.sh"
-    (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/monitor_connections.sh" ; echo "*/1 * * * * /usr/local/bin/monitor_connections.sh") | crontab -
+    { crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/monitor_connections.sh"; echo "*/1 * * * * /usr/local/bin/monitor_connections.sh"; } | crontab -
     green "  - ✅ تم إعداد مهمة مراقبة اتصالات SSH."
 else
     yellow "  - ⚠️ تحذير: لم يتم العثور على 'monitor_connections.sh'."
@@ -195,12 +195,12 @@ systemctl reload nginx
 if [ -f "monitor_v2ray.sh" ]; then
     mv "monitor_v2ray.sh" "/usr/local/bin/"
     chmod +x "/usr/local/bin/monitor_v2ray.sh"
-    (crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/monitor_v2ray.sh" ; echo "* * * * * /usr/local/bin/monitor_v2ray.sh") | crontab -
+    { crontab -l 2>/dev/null | grep -v -F "/usr/local/bin/monitor_v2ray.sh"; echo "* * * * * /usr/local/bin/monitor_v2ray.sh"; } | crontab -
     green "  - ✅ تم إعداد مهمة مراقبة اتصالات V2Ray."
 else
     yellow "  - ⚠️ تحذير: لم يتم العثور على 'monitor_v2ray.sh'."
 fi
-(crontab -l 2>/dev/null | grep -v certbot || true; echo "0 3 * * * certbot renew --quiet --post-hook 'systemctl reload nginx'") | crontab -
+{ crontab -l 2>/dev/null | grep -v certbot || true; echo "0 3 * * * certbot renew --quiet --post-hook 'systemctl reload nginx'"; } | crontab -
 green "  - ✅ تم إعداد مهمة تجديد الشهادة تلقائياً."
 
 # --- القسم الثالث: التشغيل النهائي ---
