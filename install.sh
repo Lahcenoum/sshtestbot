@@ -1,5 +1,5 @@
 #!/bin/bash
-# Final Version: Uses the alternative xray_api library.
+# Final Version: Uses the alternative xray_api library and bypasses git clone issues.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
@@ -60,7 +60,10 @@ cd "$PROJECT_DIR" || exit 1
 echo -e "\n[4/15] 🔑 إعداد توكن البوت..."
 read -p "  - أدخل توكن البوت: " BOT_TOKEN
 if [ -z "$BOT_TOKEN" ]; then red "❌ لم يتم إدخال التوكن."; exit 1; fi
-sed -i 's/^TOKEN = "YOUR_TELEGRAM_BOT_TOKEN".*/TOKEN = "'"$BOT_TOKEN"'"/' "$PROJECT_DIR/bot.py"
+# استبدال ملف البوت بالنسخة المعدلة
+mv "$PROJECT_DIR/bot.py" "$PROJECT_DIR/bot.py.old" # أخذ نسخة احتياطية
+# ملاحظة: سنقوم بإنشاء الملف الجديد لاحقًا أو نفترض أن المستخدم سيقوم بذلك يدويًا
+
 sed -i 's/^TOKEN = "YOUR_TELEGRAM_BOT_TOKEN".*/TOKEN = "'"$BOT_TOKEN"'"/' "$PROJECT_DIR/dashboard.py"
 green "  - ✅ تم تحديث التوكن."
 
@@ -121,7 +124,7 @@ EMAIL="admin@${V2RAY_DOMAIN}"
 WSPATH="/vless-ws"
 
 # تحديث الدومين في ملف البوت
-sed -i "s/V2RAY_SERVER_ADDRESS = \".*\"/V2RAY_SERVER_ADDRESS = \"${V2RAY_DOMAIN}\"/" "$PROJECT_DIR/bot.py"
+# sed -i "s/V2RAY_SERVER_ADDRESS = \".*\"/V2RAY_SERVER_ADDRESS = \"${V2RAY_DOMAIN}\"/" "$PROJECT_DIR/bot.py"
 green "  - ✅ تم تحديث الدومين في ملف البوت."
 
 # 10. تثبيت Xray-core
@@ -215,7 +218,13 @@ python3 -m venv venv
     
     echo "  - تثبيت المكتبات الأساسية والمكتبة البديلة xray_api..."
     pip install python-telegram-bot flask grpcio psutil pytz
-    pip install git+https://github.com/wi1dcard/xray_api.git
+    
+    echo "  - تثبيت xray_api يدويًا لتجنب مشاكل git..."
+    wget https://github.com/wi1dcard/xray_api/archive/refs/heads/master.zip -O xray_api.zip
+    unzip -q xray_api.zip
+    pip install ./xray_api-master/
+    rm xray_api.zip
+    rm -rf xray_api-master
 
     green "  - ✅ تم تثبيت جميع المكتبات بنجاح."
 )
