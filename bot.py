@@ -6,6 +6,8 @@ import sqlite3
 import re
 import traceback
 import html
+import json
+import uuid
 from datetime import datetime, date, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
@@ -18,19 +20,26 @@ from telegram.error import BadRequest
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 ADMIN_USER_ID = 5344028088
 ADMIN_CONTACT_INFO = "@YourAdminUsername"
-
-SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 DB_FILE = 'ssh_bot_users.db'
+
+# --- إعدادات SSH ---
+SSH_SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
+SSH_ACCOUNT_EXPIRY_DAYS = 2
+
+# --- إعدادات V2Ray ---
+V2RAY_CONFIG_PATH = "/usr/local/etc/v2ray/config.json"
+V2RAY_SERVER_ADDRESS = "your.domain.com"  #  مهم: استبدل بالدومين أو IP الخاص بك
+V2RAY_SERVER_PORT = 443
+V2RAY_WS_PATH = "/your-ws-path" #  مهم: استبدل بمسار WebSocket الخاص بك
 
 # --- قيم نظام النقاط ---
 COST_PER_ACCOUNT = 4
 DAILY_LOGIN_BONUS = 1
 INITIAL_POINTS = 2
 JOIN_BONUS = 4
-REFERRAL_BONUS = 2  #  مكافأة الإحالة
-ACCOUNT_EXPIRY_DAYS = 2
+REFERRAL_BONUS = 2
 
-# Channel and Group links and IDs (for force join)
+# --- إعدادات القنوات ---
 REQUIRED_CHANNEL_ID = -1001932589296
 REQUIRED_GROUP_ID = -1002218671728
 CHANNEL_LINK = "https://t.me/FASTVPSVIP"
@@ -47,15 +56,22 @@ GROUP_LINK = "https://t.me/dgtliA"
 # =================================================================================
 TEXTS = {
     'ar': {
-        "welcome": "أهلاً بك في بوت خدمة SSH!\n\nاستخدم الأزرار أدناه للتفاعل أو غير لغتك بالأمر /language.",
-        "get_ssh_button": "💳 طلب حساب جديد",
-        "my_account_button": "👤 حسابي",
+        "welcome": "أهلاً بك في بوت الخدمات!\n\nاستخدم الأزرار أدناه لطلب حساب SSH أو V2Ray.",
+        "get_account_button": "💳 طلب حساب جديد",
+        "my_account_button": "👤 حساباتي",
         "balance_button": "💰 رصيدي",
         "earn_points_button": "🎁 كسب النقاط",
         "redeem_code_button": "🎁 استرداد كود",
         "daily_button": "☀️ مكافأة يومية",
-        "referral_button": "👥 دعوة صديق", # زر جديد
+        "referral_button": "👥 دعوة صديق",
         "contact_admin_button": "👨‍💻 تواصل مع الأدمن",
+        "choose_account_type": "اختر نوع الحساب الذي تريده:",
+        "ssh_account_button": "🌐 حساب SSH",
+        "v2ray_account_button": "🚀 حساب V2Ray (VLESS)",
+        "v2ray_account_created": "✅ تم إنشاء حساب V2Ray بنجاح!\n\nاضغط على الرابط لنسخه:\n\n<code>{vless_link}</code>",
+        "v2ray_creation_error": "❌ خطأ فني: لم نتمكن من إنشاء حساب V2Ray. يرجى المحاولة لاحقاً.",
+        "my_v2ray_accounts": "\n\n<b>🚀 حسابات V2Ray الخاصة بك:</b>\n",
+        "v2ray_link_label": "🔗 رابط الاشتراك:",
         "contact_admin_info": "للتواصل مع الأدمن، يرجى مراسلة: {contact_info}",
         "not_enough_points": "⚠️ ليس لديك نقاط كافية. التكلفة هي <b>{cost}</b> نقطة.",
         "creation_error": "❌ حدث خطأ أثناء إنشاء الحساب. قد يكون لديك حساب بالفعل أو خطأ آخر.",
@@ -71,9 +87,9 @@ TEXTS = {
         "daily_bonus_claimed": "🎉 لقد حصلت على مكافأتك اليومية: <b>{bonus}</b> نقطة! رصيدك الآن هو <b>{new_balance}</b>.",
         "daily_bonus_already_claimed": "ℹ️ لقد حصلت بالفعل على مكافأتك اليومية. تعال غدًا!",
         "no_accounts_found": "ℹ️ لم يتم العثور على أي حسابات نشطة مرتبطة بك.",
-        "your_accounts": "<b>👤 حساباتك النشطة:</b>",
+        "your_accounts": "<b>👤 حسابات SSH الخاصة بك:</b>",
         "account_details_full": "🏷️ <b>اسم المستخدم:</b> <code>{username}</code>\n🔑 <b>كلمة المرور:</b> <code>{password}</code>\n🗓️ <b>تاريخ انتهاء الصلاحية:</b> <code>{expiry}</code>\n\n<b>Hostname:</b> <code>{hostname}</code>\n<b>Websocket Ports:</b> <code>{ws_ports}</code>\n<b>SSL Port:</b> <code>{ssl_port}</code>\n<b>UDPCUSTOM Port:</b> <code>{udpcustom_port}</code>\n\n<b>Payload:</b>\n<pre><code>{payload}</code></pre>",
-        "rewards_header": "اختر طريقة لكسب النقاط:", # تم تعديل النص
+        "rewards_header": "اختر طريقة لكسب النقاط:",
         "verify_join_button": "✅ تحقق من الانضمام",
         "reward_success": "🎉 رائع! لقد حصلت على {points} نقطة.",
         "reward_fail": "❌ لم تنضم بعد. حاول مرة أخرى بعد الانضمام.",
@@ -83,8 +99,8 @@ TEXTS = {
         "redeem_invalid_code": "❌ هذا الكود غير صالح أو غير موجود.",
         "redeem_limit_reached": "❌ لقد وصل هذا الكود إلى الحد الأقصى من الاستخدام.",
         "redeem_already_used": "❌ لقد قمت بالفعل باستخدام هذا الكود.",
-        "referral_info": "👥 <b>نظام الإحالة</b>\n\nادعُ أصدقاءك للانضمام إلى البوت باستخدام رابط الإحالة الخاص بك، واحصل على <b>{bonus}</b> نقطة عن كل صديق ينضم!\n\n🔗 <b>رابطك الخاص:</b>\n<code>{link}</code>", # رسالة الإحالة
-        "referral_bonus_notification": "🎉 لقد حصلت على <b>{bonus}</b> نقطة من دعوة صديق جديد!", # إشعار للمُحيل
+        "referral_info": "👥 <b>نظام الإحالة</b>\n\nادعُ أصدقاءك للانضمام إلى البوت باستخدام رابط الإحالة الخاص بك، واحصل على <b>{bonus}</b> نقطة عن كل صديق ينضم!\n\n🔗 <b>رابطك الخاص:</b>\n<code>{link}</code>",
+        "referral_bonus_notification": "🎉 لقد حصلت على <b>{bonus}</b> نقطة من دعوة صديق جديد!",
         "admin_panel_header": "⚙️ لوحة تحكم الأدمن",
         "admin_return_button": "⬅️ عودة",
         "admin_manage_rewards_button": "📢 إدارة قنوات الربح",
@@ -121,83 +137,12 @@ TEXTS = {
         "points": "نقاط",
     },
     'en': {
-        "welcome": "Welcome to the SSH Service Bot!\n\nUse the buttons below to interact or change your language with /language.",
-        "get_ssh_button": "💳 Request New Account",
-        "my_account_button": "👤 My Account",
-        "balance_button": "💰 My Balance",
-        "earn_points_button": "🎁 Earn Points",
-        "redeem_code_button": "🎁 Redeem Code",
-        "daily_button": "☀️ Daily Bonus",
-        "referral_button": "👥 Invite a Friend", # New button
-        "contact_admin_button": "👨‍💻 Contact Admin",
-        "contact_admin_info": "To contact the admin, please message: {contact_info}",
-        "not_enough_points": "⚠️ You don't have enough points. The cost is <b>{cost}</b> points.",
-        "creation_error": "❌ An error occurred while creating the account. You may already have an account or another error occurred.",
-        "creation_wait": "⏳ You cannot create a new account right now. Please wait <b>{time_left}</b>.",
-        "force_join_prompt": "❗️To use the bot, you must first join our channel and group.\n\nAfter joining, press the '✅ Verified' button.",
-        "force_join_channel_button": "📢 Join Channel",
-        "force_join_group_button": "👥 Join Group",
-        "force_join_verify_button": "✅ Verified",
-        "force_join_success": "✅ Thank you for joining! You can now use the bot.",
-        "force_join_fail": "❌ Your membership could not be verified. Please make sure you have joined both and try again.",
-        "join_bonus_awarded": "🎉 Join bonus! You have received {bonus} points.",
-        "balance_info": "💰 Your current balance is: <b>{points}</b> points.",
-        "daily_bonus_claimed": "🎉 You've received your daily bonus: <b>{bonus}</b> points! Your new balance is <b>{new_balance}</b>.",
-        "daily_bonus_already_claimed": "ℹ️ You have already claimed your daily bonus. Come back tomorrow!",
-        "no_accounts_found": "ℹ️ No active accounts associated with you were found.",
-        "your_accounts": "<b>👤 Your Active Accounts:</b>",
-        "account_details_full": "🏷️ <b>Username:</b> <code>{username}</code>\n🔑 <b>Password:</b> <code>{password}</code>\n🗓️ <b>Expiration Date:</b> <code>{expiry}</code>\n\n<b>Hostname:</b> <code>{hostname}</code>\n<b>Websocket Ports:</b> <code>{ws_ports}</code>\n<b>SSL Port:</b> <code>{ssl_port}</code>\n<b>UDPCUSTOM Port:</b> <code>{udpcustom_port}</code>\n\n<b>Payload:</b>\n<pre><code>{payload}</code></pre>",
-        "rewards_header": "Choose a way to earn points:", # Text updated
-        "verify_join_button": "✅ Verify Join",
-        "reward_success": "🎉 Great! You've received {points} points.",
-        "reward_fail": "❌ You haven't joined yet. Try again after joining.",
-        "no_channels_available": "ℹ️ There are currently no channels available for rewards.",
-        "redeem_prompt": "Please send the code you want to redeem.",
-        "redeem_success": "🎉 Congratulations! You've received <b>{points}</b> points. Your new balance is <b>{new_balance}</b>.",
-        "redeem_invalid_code": "❌ This code is invalid or does not exist.",
-        "redeem_limit_reached": "❌ This code has reached its maximum usage limit.",
-        "redeem_already_used": "❌ You have already used this code.",
-        "referral_info": "👥 <b>Referral System</b>\n\nInvite your friends to join the bot using your referral link and get <b>{bonus}</b> points for each friend who joins!\n\n🔗 <b>Your Link:</b>\n<code>{link}</code>", # Referral message
-        "referral_bonus_notification": "🎉 You've received <b>{bonus}</b> points for inviting a new user!", # Notification for the referrer
-        "admin_panel_header": "⚙️ Admin Control Panel",
-        "admin_return_button": "⬅️ Back",
-        "admin_manage_rewards_button": "📢 Manage Reward Channels",
-        "admin_manage_codes_button": "🎁 Manage Gift Codes",
-        "admin_user_stats_button": "📊 User Statistics",
-        "admin_edit_connection_info_button": "⚙️ Edit Connection Info",
-        "admin_add_channel_button": "➕ Add Channel/Group",
-        "admin_remove_channel_button": "➖ Remove Channel/Group",
-        "admin_add_channel_name_prompt": "Send the channel name:",
-        "admin_add_channel_link_prompt": "Now send the full channel link:",
-        "admin_add_channel_id_prompt": "Send the numeric channel ID (starts with -100):",
-        "admin_add_channel_points_prompt": "Finally, send the number of reward points:",
-        "admin_channel_added_success": "✅ Channel added successfully.",
-        "admin_remove_channel_prompt": "Choose the channel you want to remove:",
-        "admin_channel_removed_success": "🗑️ Channel removed successfully.",
-        "admin_create_code_button": "➕ Create New Code",
-        "admin_create_code_prompt_name": "Send the new code name (e.g., WELCOME2025):",
-        "admin_create_code_prompt_points": "Now send the number of points this code grants:",
-        "admin_create_code_prompt_uses": "Finally, send the number of users who can use this code:",
-        "admin_code_created": "✅ Code <code>{code}</code> created successfully. It grants <b>{points}</b> points and is available for <b>{uses}</b> users.",
-        "admin_edit_hostname_prompt": "Send the new Hostname:",
-        "admin_edit_ws_ports_prompt": "Send the new Websocket ports (e.g., 80, 8880):",
-        "admin_edit_ssl_port_prompt": "Send the new SSL port:",
-        "admin_edit_udpcustom_prompt": "Send the new UDPCUSTOM port:",
-        "admin_edit_contact_prompt": "Send the new contact info (e.g., @username):",
-        "admin_edit_payload_prompt": "Finally, send the new Payload:",
-        "admin_info_updated_success": "✅ Connection info updated successfully.",
-        "user_stats_info": "<b>📊 User Statistics:</b>\n\n- <b>Total Users:</b> {total_users}\n- <b>Active Today:</b> {active_today}\n- <b>Active Yesterday:</b> {active_yesterday}\n- <b>New Today:</b> {new_today}",
-        "choose_language": "Choose your preferred language:",
-        "language_set": "✅ Language has been set to: {lang_name}",
-        "invalid_input": "❌ Invalid input, please try again.",
-        "operation_cancelled": "✅ Operation cancelled.",
-        "creating_account": "Creating account...",
-        "points": "points",
-    },
+        # ... English translations can be added here ...
+    }
 }
 
 def get_text(key, lang_code='ar'):
-    return TEXTS.get(lang_code, TEXTS['en']).get(key, key)
+    return TEXTS.get('ar', {}).get(key, key)
 
 # =================================================================================
 # 3. إدارة قاعدة البيانات (Database Management)
@@ -205,8 +150,9 @@ def get_text(key, lang_code='ar'):
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, ssh_password TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE, referrer_id INTEGER)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, ssh_password TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS v2ray_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, uuid TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS reward_channels (channel_id INTEGER PRIMARY KEY, channel_link TEXT NOT NULL, reward_points INTEGER NOT NULL, channel_name TEXT NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS user_channel_rewards (telegram_user_id INTEGER, channel_id INTEGER, PRIMARY KEY (telegram_user_id, channel_id))')
         cursor.execute('CREATE TABLE IF NOT EXISTS redeem_codes (code TEXT PRIMARY KEY, points INTEGER, max_uses INTEGER, current_uses INTEGER DEFAULT 0)')
@@ -265,10 +211,9 @@ def set_connection_setting(key, value):
         conn.commit()
 
 # =================================================================================
-# 4. دوال مساعدة وديكورات (Helpers & Decorators)
+# 4. دوال مساعدة (Helpers)
 # =================================================================================
 def log_activity(func):
-    """Decorator to log user activity for statistics."""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user_id = update.effective_user.id
         today = date.today().isoformat()
@@ -278,8 +223,21 @@ def log_activity(func):
         return await func(update, context, *args, **kwargs)
     return wrapper
 
-def generate_password():
-    return "bot" + ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+def read_v2ray_config():
+    with open(V2RAY_CONFIG_PATH, 'r') as f:
+        return json.load(f)
+
+def write_v2ray_config(config_data):
+    with open(V2RAY_CONFIG_PATH, 'w') as f:
+        json.dump(config_data, f, indent=4)
+
+def restart_v2ray():
+    try:
+        subprocess.run(["systemctl", "restart", "v2ray"], check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"V2Ray restart failed: {e}")
+        return False
 
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
@@ -291,9 +249,9 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception as e:
         print(f"Error checking membership for {user_id}: {e}")
         return False
-
+        
 # =================================================================================
-# 5. أوامر البوت الأساسية (Core Bot Commands)
+# 5. أوامر البوت الأساسية
 # =================================================================================
 @log_activity
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False):
@@ -304,8 +262,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
     if context.args and context.args[0].startswith('ref_'):
         try:
             referrer_id = int(context.args[0].split('_')[1])
-            if referrer_id == user.id:
-                referrer_id = None
+            if referrer_id == user.id: referrer_id = None
         except (ValueError, IndexError):
             referrer_id = None
 
@@ -321,9 +278,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
         await message.reply_text(get_text('force_join_prompt', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    # تم تعديل لوحة المفاتيح الرئيسية
     keyboard_layout = [
-        [KeyboardButton(get_text('get_ssh_button', lang_code))],
+        [KeyboardButton(get_text('get_account_button', lang_code))],
         [KeyboardButton(get_text('balance_button', lang_code)), KeyboardButton(get_text('my_account_button', lang_code))],
         [KeyboardButton(get_text('daily_button', lang_code)), KeyboardButton(get_text('earn_points_button', lang_code))],
         [KeyboardButton(get_text('redeem_code_button', lang_code)), KeyboardButton(get_text('contact_admin_button', lang_code))]
@@ -332,25 +288,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
     await message.reply_text(get_text('welcome', lang_code), reply_markup=reply_markup)
 
 @log_activity
-async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def request_new_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    await get_or_create_user(user_id)
     lang_code = get_user_lang(user_id)
     
-    with sqlite3.connect(DB_FILE) as conn:
-        last_creation = conn.execute("SELECT MAX(created_at) FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-    
-    if last_creation:
-        last_creation_time = datetime.strptime(last_creation, '%Y-%m-%d %H:%M:%S.%f')
-        if datetime.now() - last_creation_time < timedelta(hours=24):
-            time_left = timedelta(hours=24) - (datetime.now() - last_creation_time)
-            hours, remainder = divmod(time_left.seconds, 3600)
-            minutes, _ = divmod(remainder, 60)
-            await update.message.reply_text(get_text('creation_wait', lang_code).format(time_left=f"{hours}h {minutes}m"), parse_mode=ParseMode.HTML)
-            return
-
-    await update.message.reply_text("⏳ " + get_text('creating_account', lang_code))
-
     with sqlite3.connect(DB_FILE) as conn:
         user_points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
     
@@ -358,10 +299,43 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_text('not_enough_points', lang_code).format(cost=COST_PER_ACCOUNT), parse_mode=ParseMode.HTML)
         return
 
+    keyboard = [
+        [InlineKeyboardButton(get_text('ssh_account_button', lang_code), callback_data='create_ssh')],
+        [InlineKeyboardButton(get_text('v2ray_account_button', lang_code), callback_data='create_vless')],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(get_text('choose_account_type', lang_code), reply_markup=reply_markup)
+
+async def account_creation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    lang_code = get_user_lang(user_id)
+
+    with sqlite3.connect(DB_FILE) as conn:
+        user_points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+    
+    if user_points < COST_PER_ACCOUNT:
+        await query.edit_message_text(get_text('not_enough_points', lang_code).format(cost=COST_PER_ACCOUNT), parse_mode=ParseMode.HTML)
+        return
+
+    await query.edit_message_text(text=get_text('creating_account', lang_code))
+
+    if query.data == 'create_ssh':
+        await create_ssh_account(update, context)
+    elif query.data == 'create_vless':
+        await create_vless_account(update, context)
+
+async def create_ssh_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    lang_code = get_user_lang(user_id)
+
     try:
         username = f"sshdatbot{user_id}"
-        password = generate_password()
-        command_to_run = ["sudo", SCRIPT_PATH, username, password, str(ACCOUNT_EXPIRY_DAYS)]
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        command_to_run = ["sudo", SSH_SCRIPT_PATH, username, password, str(SSH_ACCOUNT_EXPIRY_DAYS)]
 
         process = subprocess.run(command_to_run, capture_output=True, text=True, timeout=30, check=True)
         
@@ -370,71 +344,124 @@ async def get_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.execute("INSERT INTO ssh_accounts (telegram_user_id, ssh_username, ssh_password, created_at) VALUES (?, ?, ?, ?)", (user_id, username, password, datetime.now()))
             conn.commit()
 
-        result_details = process.stdout
-        
         hostname = get_connection_setting("hostname")
         ws_ports = get_connection_setting("ws_ports")
         ssl_port = get_connection_setting("ssl_port")
         udpcustom_port = get_connection_setting("udpcustom_port")
         payload = get_connection_setting("payload")
-
-        account_info = (
-            f"<b>✅ تم إنشاء حسابك بنجاح!</b>\n\n"
-            f"<b>البيانات الأساسية:</b>\n"
-            f"<pre><code>{html.escape(result_details.strip())}</code></pre>\n\n"
-            f"<b>Hostname:</b> <code>{html.escape(hostname)}</code>\n\n"
-            f"<b> Websocket Ports:</b> <code>{html.escape(ws_ports)}</code>\n"
-            f"<b> SSL Port:</b> <code>{html.escape(ssl_port)}</code>\n"
-            f"<b> Websocket SSL Port:</b> <code>{html.escape(ssl_port)}</code>\n"
-            f"<b> UDPCUSTOM Port:</b> <code>{html.escape(udpcustom_port)}</code>\n\n"
-            f"<b>Payload:</b>\n<pre><code>{html.escape(payload)}</code></pre>\n\n"
-            f"⚠️ <b>ملاحظة</b>: الحساب صالح لمستخدم واحد فقط للحفاظ على السرعة."
-        )
-        await update.message.reply_text(account_info, parse_mode=ParseMode.HTML)
-
-    except Exception as e:
-        print("--- AN UNEXPECTED ERROR OCCURRED ---"); traceback.print_exc()
-        await update.message.reply_text(get_text('creation_error', lang_code))
-
-@log_activity
-async def my_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    lang_code = get_user_lang(user_id)
-    with sqlite3.connect(DB_FILE) as conn:
-        accounts = conn.execute("SELECT ssh_username, ssh_password FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
-    
-    if not accounts:
-        await update.message.reply_text(get_text('no_accounts_found', lang_code)); return
-
-    response_parts = [get_text('your_accounts', lang_code)]
-    
-    hostname = get_connection_setting("hostname")
-    ws_ports = get_connection_setting("ws_ports")
-    ssl_port = get_connection_setting("ssl_port")
-    udpcustom_port = get_connection_setting("udpcustom_port")
-    payload = get_connection_setting("payload")
-
-    for username, password in accounts:
+        
         try:
             expiry_output = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True, stderr=subprocess.DEVNULL)
             expiry_line = next((line for line in expiry_output.split('\n') if "Account expires" in line), None)
             expiry = expiry_line.split(':', 1)[1].strip() if expiry_line else "N/A"
-            
-            account_info = get_text('account_details_full', lang_code).format(
-                username=html.escape(username), 
-                password=html.escape(password), 
-                expiry=html.escape(expiry),
-                hostname=html.escape(hostname),
-                ws_ports=html.escape(ws_ports),
-                ssl_port=html.escape(ssl_port),
-                udpcustom_port=html.escape(udpcustom_port),
-                payload=html.escape(payload)
-            )
-            response_parts.append(account_info)
+        except Exception:
+            expiry = "N/A"
 
-        except Exception as e: 
-            print(f"Could not get expiry for {username}: {e}")
-            response_parts.append(f"Could not retrieve details for user <code>{html.escape(username)}</code>.")
+        account_info = get_text('account_details_full', lang_code).format(
+            username=html.escape(username), password=html.escape(password), expiry=html.escape(expiry),
+            hostname=html.escape(hostname), ws_ports=html.escape(ws_ports),
+            ssl_port=html.escape(ssl_port), udpcustom_port=html.escape(udpcustom_port),
+            payload=html.escape(payload)
+        )
+        await query.edit_message_text(account_info, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        print(f"SSH Creation Error: {e}"); traceback.print_exc()
+        await query.edit_message_text(get_text('creation_error', lang_code))
+
+async def create_vless_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    lang_code = get_user_lang(user_id)
+
+    new_uuid = str(uuid.uuid4())
+    user_email = f"user-{user_id}"
+
+    try:
+        config = read_v2ray_config()
+        vless_inbound_found = False
+        for inbound in config['inbounds']:
+            if inbound.get('protocol') == 'vless':
+                if 'clients' not in inbound['settings']:
+                    inbound['settings']['clients'] = []
+                inbound['settings']['clients'].append({"id": new_uuid, "email": user_email})
+                vless_inbound_found = True
+                break
+        
+        if not vless_inbound_found:
+            await query.edit_message_text(text=get_text('v2ray_creation_error', lang_code))
+            return
+
+        write_v2ray_config(config)
+
+        if not restart_v2ray():
+            await query.edit_message_text(text=get_text('v2ray_creation_error', lang_code))
+            return
+
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
+            conn.execute("INSERT INTO v2ray_accounts (telegram_user_id, uuid, created_at) VALUES (?, ?, ?)", (user_id, new_uuid, datetime.now()))
+            conn.commit()
+
+        vless_link = (
+            f"vless://{new_uuid}@{V2RAY_SERVER_ADDRESS}:{V2RAY_SERVER_PORT}"
+            f"?type=ws&security=tls&path={V2RAY_WS_PATH.replace('/', '%2F')}"
+            f"#{user_email}"
+        )
+        await query.edit_message_text(
+            get_text('v2ray_account_created', lang_code).format(vless_link=vless_link),
+            parse_mode=ParseMode.HTML
+        )
+
+    except Exception as e:
+        print(f"V2Ray Creation Error: {e}"); traceback.print_exc()
+        await query.edit_message_text(get_text('v2ray_creation_error', lang_code))
+
+@log_activity
+async def my_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang_code = get_user_lang(user_id)
+    
+    response_parts = []
+    
+    with sqlite3.connect(DB_FILE) as conn:
+        ssh_accounts = conn.execute("SELECT ssh_username, ssh_password FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
+        v2ray_accounts = conn.execute("SELECT uuid FROM v2ray_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
+
+    if ssh_accounts:
+        response_parts.append(get_text('your_accounts', lang_code))
+        hostname = get_connection_setting("hostname")
+        ws_ports = get_connection_setting("ws_ports")
+        ssl_port = get_connection_setting("ssl_port")
+        udpcustom_port = get_connection_setting("udpcustom_port")
+        payload = get_connection_setting("payload")
+        for username, password in ssh_accounts:
+            try:
+                expiry_output = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True, stderr=subprocess.DEVNULL)
+                expiry_line = next((line for line in expiry_output.split('\n') if "Account expires" in line), None)
+                expiry = expiry_line.split(':', 1)[1].strip() if expiry_line else "N/A"
+            except Exception:
+                expiry = "N/A"
+            response_parts.append(get_text('account_details_full', lang_code).format(
+                username=html.escape(username), password=html.escape(password), expiry=html.escape(expiry),
+                hostname=html.escape(hostname), ws_ports=html.escape(ws_ports),
+                ssl_port=html.escape(ssl_port), udpcustom_port=html.escape(udpcustom_port),
+                payload=html.escape(payload)
+            ))
+
+    if v2ray_accounts:
+        response_parts.append(get_text('my_v2ray_accounts', lang_code))
+        for (user_uuid,) in v2ray_accounts:
+            vless_link = (
+                f"vless://{user_uuid}@{V2RAY_SERVER_ADDRESS}:{V2RAY_SERVER_PORT}"
+                f"?type=ws&security=tls&path={V2RAY_WS_PATH.replace('/', '%2F')}"
+                f"#user-{user_id}"
+            )
+            response_parts.append(f"{get_text('v2ray_link_label', lang_code)}\n<code>{vless_link}</code>")
+
+    if not response_parts:
+        await update.message.reply_text(get_text('no_accounts_found', lang_code))
+        return
 
     full_response = "\n\n---\n\n".join(response_parts)
     await update.message.reply_text(full_response, parse_mode=ParseMode.HTML)
@@ -465,6 +492,31 @@ async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_text('daily_bonus_claimed', lang_code).format(bonus=DAILY_LOGIN_BONUS, new_balance=new_balance), parse_mode=ParseMode.HTML)
 
 @log_activity
+async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang_code = get_user_lang(user_id)
+    with sqlite3.connect(DB_FILE) as conn:
+        all_channels = conn.execute("SELECT channel_id, channel_link, reward_points, channel_name FROM reward_channels").fetchall()
+        claimed_ids = {row[0] for row in conn.execute("SELECT channel_id FROM user_channel_rewards WHERE telegram_user_id = ?", (user_id,))}
+    
+    keyboard = []
+    for cid, link, points, name in all_channels:
+        if cid in claimed_ids:
+            button_text = f"✅ {name}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data="dummy")])
+        else:
+            button_text = f"{name} (+{points} {get_text('points', lang_code)})"
+            keyboard.append([InlineKeyboardButton(button_text, url=link)])
+            keyboard.append([InlineKeyboardButton(get_text('verify_join_button', lang_code), callback_data=f"verify_r_{cid}_{points}")])
+    
+    if all_channels:
+        keyboard.append([InlineKeyboardButton("-----------", callback_data="dummy")])
+    keyboard.append([InlineKeyboardButton(get_text('referral_button', lang_code), callback_data='get_referral_link')])
+
+    reply_func = update.message.reply_text
+    await reply_func(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+
+@log_activity
 async def contact_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang_code = get_user_lang(update.effective_user.id)
     contact_info = get_connection_setting("admin_contact")
@@ -488,7 +540,6 @@ async def set_language_callback(update: Update, context: ContextTypes.DEFAULT_TY
     lang_map = {'en': 'English', 'ar': 'العربية'}
     await query.edit_message_text(text=get_text('language_set', lang_code).format(lang_name=lang_map.get(lang_code)))
     await start(update, context, from_callback=True)
-
 
 # =================================================================================
 # 6. Admin Panel & Features
@@ -526,7 +577,6 @@ async def show_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     keyboard = [[InlineKeyboardButton(get_text('admin_return_button', lang_code), callback_data='admin_panel_main')]]
     await query.edit_message_text(stats_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-
 
 async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -705,69 +755,6 @@ async def edit_payload_received(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data.clear()
     return ConversationHandler.END
 
-# =================================================================================
-# 7. User Rewards, Codes, and Referrals
-# =================================================================================
-@log_activity
-async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    lang_code = get_user_lang(user_id)
-    with sqlite3.connect(DB_FILE) as conn:
-        all_channels = conn.execute("SELECT channel_id, channel_link, reward_points, channel_name FROM reward_channels").fetchall()
-        claimed_ids = {row[0] for row in conn.execute("SELECT channel_id FROM user_channel_rewards WHERE telegram_user_id = ?", (user_id,))}
-    
-    keyboard = []
-    #  إضافة قنوات الربح
-    for cid, link, points, name in all_channels:
-        if cid in claimed_ids:
-            button_text = f"✅ {name}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data="dummy")])
-        else:
-            button_text = f"{name} (+{points} {get_text('points', lang_code)})"
-            keyboard.append([InlineKeyboardButton(button_text, url=link)])
-            keyboard.append([InlineKeyboardButton(get_text('verify_join_button', lang_code), callback_data=f"verify_r_{cid}_{points}")])
-    
-    # إضافة فاصل وزر الإحالة
-    if all_channels: #  إضافة فاصل فقط إذا كانت هناك قنوات
-        keyboard.append([InlineKeyboardButton("-----------", callback_data="dummy")])
-    keyboard.append([InlineKeyboardButton(get_text('referral_button', lang_code), callback_data='get_referral_link')])
-
-
-    if update.callback_query:
-        reply_func = update.callback_query.edit_message_text
-    else:
-        reply_func = update.message.reply_text
-        
-    await reply_func(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def verify_reward_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query; await query.answer()
-    user_id = query.from_user.id
-    lang_code = get_user_lang(user_id)
-    
-    try:
-        _, _, channel_id_str, points_str = query.data.split('_')
-        channel_id, points = int(channel_id_str), int(points_str)
-    except (ValueError, IndexError):
-        await query.answer("Data error.", show_alert=True); return
-
-    try:
-        member = await context.bot.get_chat_member(chat_id=channel_id, user_id=user_id)
-        if member.status not in ['member', 'administrator', 'creator']:
-            await query.answer(get_text('reward_fail', lang_code), show_alert=True); return
-    except Exception as e:
-        await query.answer(f"Error: Could not verify. Make sure the bot is an admin in the channel.", show_alert=True); return
-    
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        if cursor.execute("SELECT 1 FROM user_channel_rewards WHERE telegram_user_id = ? AND channel_id = ?", (user_id, channel_id)).fetchone():
-            await query.answer("You have already claimed this reward.", show_alert=True); return
-        
-        cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
-        cursor.execute("INSERT INTO user_channel_rewards (telegram_user_id, channel_id) VALUES (?, ?)", (user_id, channel_id))
-    await query.answer(get_text('reward_success', lang_code).format(points=points), show_alert=True)
-    await earn_points_command(update, context)
-
 @log_activity
 async def redeem_code_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang_code = get_user_lang(update.effective_user.id)
@@ -799,7 +786,6 @@ async def redeem_code_received(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(get_text('redeem_success', lang_code).format(points=points, new_balance=new_balance), parse_mode=ParseMode.HTML)
     return ConversationHandler.END
 
-# دالة جديدة للرد على طلب رابط الإحالة
 async def get_referral_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -812,13 +798,8 @@ async def get_referral_link_callback(update: Update, context: ContextTypes.DEFAU
         bonus=REFERRAL_BONUS,
         link=referral_link
     )
-    # إرسال الرابط في رسالة جديدة
     await query.message.reply_text(message_text, parse_mode=ParseMode.HTML)
 
-
-# =================================================================================
-# 8. Callbacks and Conversations
-# =================================================================================
 async def verify_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer()
     user_id = query.from_user.id
@@ -838,6 +819,34 @@ async def verify_join_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         await query.answer(get_text('force_join_fail', lang_code), show_alert=True)
 
+async def verify_reward_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query; await query.answer()
+    user_id = query.from_user.id
+    lang_code = get_user_lang(user_id)
+    
+    try:
+        _, _, channel_id_str, points_str = query.data.split('_')
+        channel_id, points = int(channel_id_str), int(points_str)
+    except (ValueError, IndexError):
+        await query.answer("Data error.", show_alert=True); return
+
+    try:
+        member = await context.bot.get_chat_member(chat_id=channel_id, user_id=user_id)
+        if member.status not in ['member', 'administrator', 'creator']:
+            await query.answer(get_text('reward_fail', lang_code), show_alert=True); return
+    except Exception as e:
+        await query.answer(f"Error: Could not verify. Make sure the bot is an admin in the channel.", show_alert=True); return
+    
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        if cursor.execute("SELECT 1 FROM user_channel_rewards WHERE telegram_user_id = ? AND channel_id = ?", (user_id, channel_id)).fetchone():
+            await query.answer("You have already claimed this reward.", show_alert=True); return
+        
+        cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
+        cursor.execute("INSERT INTO user_channel_rewards (telegram_user_id, channel_id) VALUES (?, ?)", (user_id, channel_id))
+    await query.answer(get_text('reward_success', lang_code).format(points=points), show_alert=True)
+    await earn_points_command(update, context)
+
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang_code = get_user_lang(update.effective_user.id)
     await update.message.reply_text(get_text('operation_cancelled', lang_code))
@@ -855,7 +864,7 @@ def main():
         sys.exit(1)
 
     app = ApplicationBuilder().token(TOKEN).build()
-
+    
     conv_defaults = {'per_message': True, 'allow_reentry': True}
 
     edit_info_conv = ConversationHandler(
@@ -893,38 +902,38 @@ def main():
         **conv_defaults
     )
     redeem_code_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('redeem_code_button', 'ar'))}|{re.escape(get_text('redeem_code_button', 'en'))})$") & filters.ChatType.PRIVATE, redeem_code_start)],
+        entry_points=[MessageHandler(filters.Regex(f"^{re.escape(get_text('redeem_code_button', 'ar'))}$"), redeem_code_start)],
         states={REDEEM_CODE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, redeem_code_received)]},
         fallbacks=[CommandHandler('cancel', cancel_conversation)],
         **conv_defaults
     )
 
-    app.add_handler(CommandHandler("start", start, filters.ChatType.PRIVATE))
-    app.add_handler(CommandHandler("admin", admin_panel, filters.ChatType.PRIVATE))
-    app.add_handler(CommandHandler("language", language_command, filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("admin", admin_panel))
+    app.add_handler(CommandHandler("language", language_command))
 
     app.add_handler(add_channel_conv)
     app.add_handler(create_code_conv)
     app.add_handler(redeem_code_conv)
     app.add_handler(edit_info_conv)
 
-    app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('get_ssh_button', 'ar'))}|{re.escape(get_text('get_ssh_button', 'en'))})$") & filters.ChatType.PRIVATE, get_ssh))
-    app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('my_account_button', 'ar'))}|{re.escape(get_text('my_account_button', 'en'))})$") & filters.ChatType.PRIVATE, my_account))
-    app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('balance_button', 'ar'))}|{re.escape(get_text('balance_button', 'en'))})$") & filters.ChatType.PRIVATE, balance_command))
-    app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('daily_button', 'ar'))}|{re.escape(get_text('daily_button', 'en'))})$") & filters.ChatType.PRIVATE, daily_command))
-    app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('earn_points_button', 'ar'))}|{re.escape(get_text('earn_points_button', 'en'))})$") & filters.ChatType.PRIVATE, earn_points_command))
-    app.add_handler(MessageHandler(filters.Regex(f"^(?:{re.escape(get_text('contact_admin_button', 'ar'))}|{re.escape(get_text('contact_admin_button', 'en'))})$") & filters.ChatType.PRIVATE, contact_admin_command))
-
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('get_account_button', 'ar'))}$"), request_new_account))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('my_account_button', 'ar'))}$"), my_accounts))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('balance_button', 'ar'))}$"), balance_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('daily_button', 'ar'))}$"), daily_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('earn_points_button', 'ar'))}$"), earn_points_command))
+    app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('contact_admin_button', 'ar'))}$"), contact_admin_command))
+    
+    app.add_handler(CallbackQueryHandler(account_creation_callback, pattern='^create_'))
     app.add_handler(CallbackQueryHandler(verify_join_callback, pattern='^verify_join$'))
     app.add_handler(CallbackQueryHandler(verify_reward_callback, pattern='^verify_r_'))
     app.add_handler(CallbackQueryHandler(remove_channel_confirm, pattern='^remove_c_'))
     app.add_handler(CallbackQueryHandler(set_language_callback, pattern='^set_lang_'))
-    # معالج جديد لزر الإحالة المدمج
     app.add_handler(CallbackQueryHandler(get_referral_link_callback, pattern='^get_referral_link$'))
     app.add_handler(CallbackQueryHandler(lambda u,c: u.callback_query.answer(), pattern='^dummy$'))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern='^admin_'))
 
-    print("Bot is running with FULL features including referrals...")
+    print("Bot is running with FULL SSH and V2Ray features...")
     app.run_polling()
 
 if __name__ == '__main__':
