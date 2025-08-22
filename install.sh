@@ -1,6 +1,6 @@
 #!/bin/bash
-# Final Guaranteed Version: Installs all dependencies for the full bot,
-# and manually installs xray_api via wget to bypass all git issues.
+# Final Definitive Version: Aligned with the bot code that uses Xray's own CLI.
+# No external API libraries are needed.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
@@ -206,17 +206,10 @@ python3 -m venv venv
     echo "  - تحديث pip..."
     pip install --upgrade pip
     
-    echo "  - تثبيت المكتبات الأساسية..."
-    pip install python-telegram-bot flask psutil pytz grpcio
-    
-    echo "  - تثبيت xray_api يدويًا لتجنب مشاكل git..."
-    wget https://github.com/wi1dcard/xray_api/archive/refs/heads/master.zip -O xray_api.zip
-    unzip -q xray_api.zip
-    pip install ./xray_api-master/
-    rm xray_api.zip
-    rm -rf xray_api-master
+    echo "  - تثبيت المكتبات الأساسية فقط..."
+    pip install python-telegram-bot flask psutil pytz
 
-    green "  - ✅ تم تثبيت جميع المكتبات بنجاح."
+    green "  - ✅ تم تثبيت جميع المكتبات الضرورية بنجاح."
 )
 
 # 15. إعداد وتشغيل الخدمات
