@@ -14,10 +14,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Messa
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 
-#  المكتبة البديلة والجديدة للـ API
-from xray_api.client import XrayClient
-
-# = a================================================================================
+# =================================================================================
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
 TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
@@ -30,11 +27,11 @@ SSH_SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 SSH_ACCOUNT_EXPIRY_DAYS = 2
 
 # --- إعدادات Xray ---
-V2RAY_CONFIG_PATH = "/usr/local/etc/xray/config.json" # تم تحديث المسار لـ Xray
+XRAY_EXECUTABLE_PATH = "/usr/local/bin/xray" # المسار إلى ملف Xray التنفيذي
 V2RAY_SERVER_ADDRESS = "your.domain.com"
 V2RAY_SERVER_PORT = 443
 V2RAY_WS_PATH = "/vless-ws"
-#  إعدادات جديدة للـ API
+#  إعدادات API
 XRAY_API_HOST = "127.0.0.1"
 XRAY_API_PORT = 10085
 VLESS_INBOUND_TAG = "vless-inbound" #  يجب أن يطابق الـ tag في ملف config.json
@@ -230,14 +227,6 @@ def log_activity(func):
         return await func(update, context, *args, **kwargs)
     return wrapper
 
-def restart_xray(): #  يستخدم كخطة بديلة فقط
-    try:
-        subprocess.run(["systemctl", "restart", "xray"], check=True)
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Xray restart failed: {e}")
-        return False
-
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
         channel_member = await context.bot.get_chat_member(REQUIRED_CHANNEL_ID, user_id)
@@ -377,16 +366,26 @@ async def create_vless_account(update: Update, context: ContextTypes.DEFAULT_TYP
     user_email = f"user-{user_id}"
 
     try:
-        #  الحل النهائي: استخدام مكتبة xray_api
-        try:
-            client = XrayClient(XRAY_API_HOST, XRAY_API_PORT)
-            client.add_client(VLESS_INBOUND_TAG, new_uuid, user_email)
-            print(f"Successfully added VLESS user {user_email} via xray_api.")
-        except Exception as api_error:
-            print(f"Xray API Error: {api_error}. Could not add user dynamically.")
-            print("Falling back to restarting Xray service...")
-            if not restart_xray():
-                raise Exception("API and restart fallback both failed.")
+        # --- الحل النهائي والجذري: استخدام أداة Xray مباشرة مع الأمر الصحيح ---
+        client_config = {
+            "id": new_uuid,
+            "email": user_email,
+            "level": 0
+        }
+        client_json = json.dumps(client_config)
+
+        # الأمر الصحيح لإضافة مستخدم هو "api inbound add" وتمرير الإعدادات عبر stdin
+        command = [
+            XRAY_EXECUTABLE_PATH, "api", "inbound", "add",
+            "--server", f"{XRAY_API_HOST}:{XRAY_API_PORT}",
+            "--tag", VLESS_INBOUND_TAG
+        ]
+        
+        # تنفيذ الأمر وتمرير إعدادات المستخدم عبر stdin
+        result = subprocess.run(command, input=client_json, text=True, check=True, capture_output=True)
+        print(f"Xray API command output: {result.stdout}")
+        
+        # --- نهاية الحل النهائي ---
 
         # حفظ في قاعدة البيانات وإرسال الرد
         with sqlite3.connect(DB_FILE) as conn:
@@ -404,8 +403,11 @@ async def create_vless_account(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode=ParseMode.HTML
         )
 
+    except subprocess.CalledProcessError as e:
+        print(f"Xray CLI Error: {e.stderr}"); traceback.print_exc()
+        await query.edit_message_text(get_text('v2ray_creation_error', lang_code))
     except Exception as e:
-        print(f"V2Ray Creation Error: {e}"); traceback.print_exc()
+        print(f"General V2Ray Creation Error: {e}"); traceback.print_exc()
         await query.edit_message_text(get_text('v2ray_creation_error', lang_code))
 
 @log_activity
