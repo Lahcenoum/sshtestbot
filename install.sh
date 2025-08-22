@@ -1,5 +1,6 @@
 #!/bin/bash
-# Final Innovative Version: Relies on Xray's own CLI, no external API libs needed.
+# Final Guaranteed Version: Installs all dependencies for the full bot,
+# and manually installs xray_api via wget to bypass all git issues.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
@@ -33,7 +34,7 @@ echo "=================================================="
 # --- القسم الأول: تثبيت بوت التليجرام ---
 
 # الخطوة 0: حذف أي تثبيت قديم
-echo -e "\n[0/14] 🗑️ حذف أي تثبيت قديم..."
+echo -e "\n[0/15] 🗑️ حذف أي تثبيت قديم..."
 systemctl stop ssh_bot.service ssh_bot_dashboard.service xray >/dev/null 2>&1 || true
 systemctl disable ssh_bot.service ssh_bot_dashboard.service xray >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/ssh_bot.service
@@ -41,23 +42,23 @@ rm -f /etc/systemd/system/ssh_bot_dashboard.service
 rm -rf "$PROJECT_DIR"
 
 # 1. تحديث النظام وتثبيت المتطلبات
-echo -e "\n[1/14] 📦 تحديث النظام وتثبيت المتطلبات الأساسية..."
+echo -e "\n[1/15] 📦 تحديث النظام وتثبيت المتطلبات الأساسية..."
 apt-get update
 apt-get install -y git python3-venv python3-pip openssl sudo jq curl wget unzip coreutils socat cron nginx ufw
 
 # 2. التأكد من أن خدمة cron تعمل
-echo -e "\n[2/14] ⏰ التأكد من تشغيل خدمة cron..."
+echo -e "\n[2/15] ⏰ التأكد من تشغيل خدمة cron..."
 systemctl start cron
 systemctl enable cron
 green "  - ✅ خدمة cron تعمل الآن."
 
 # 3. استنساخ المشروع
-echo -e "\n[3/14] 📥 استنساخ المشروع من GitHub..."
+echo -e "\n[3/15] 📥 استنساخ المشروع من GitHub..."
 git clone "$GIT_REPO_URL" "$PROJECT_DIR"
 cd "$PROJECT_DIR" || exit 1
 
 # 4. إدخال توكن البوت
-echo -e "\n[4/14] 🔑 إعداد توكن البوت..."
+echo -e "\n[4/15] 🔑 إعداد توكن البوت..."
 read -p "  - أدخل توكن البوت: " BOT_TOKEN
 if [ -z "$BOT_TOKEN" ]; then red "❌ لم يتم إدخال التوكن."; exit 1; fi
 sed -i 's/^TOKEN = "YOUR_TELEGRAM_BOT_TOKEN".*/TOKEN = "'"$BOT_TOKEN"'"/' "$PROJECT_DIR/bot.py"
@@ -65,14 +66,14 @@ sed -i 's/^TOKEN = "YOUR_TELEGRAM_BOT_TOKEN".*/TOKEN = "'"$BOT_TOKEN"'"/' "$PROJ
 green "  - ✅ تم تحديث التوكن."
 
 # 5. إعداد كلمة مرور لوحة التحكم
-echo -e "\n[5/14] 🛡️ إعداد كلمة مرور لوحة التحكم..."
+echo -e "\n[5/15] 🛡️ إعداد كلمة مرور لوحة التحكم..."
 read -p "  - أدخل كلمة مرور للوحة التحكم (اتركها فارغة لاستخدام 'admin'): " DASH_PASSWORD
 if [ -z "$DASH_PASSWORD" ]; then DASH_PASSWORD="admin"; fi
 sed -i "s/^DASHBOARD_PASSWORD = \"admin\".*/DASHBOARD_PASSWORD = \"$DASH_PASSWORD\"/" "$PROJECT_DIR/dashboard.py"
 green "  - ✅ تم تعيين كلمة مرور لوحة التحكم."
 
 # 6. إعداد سكربت إنشاء مستخدم SSH
-echo -e "\n[6/14] 👤 إعداد سكربت إنشاء حسابات SSH..."
+echo -e "\n[6/15] 👤 إعداد سكربت إنشاء حسابات SSH..."
 read -p "  - أدخل عنوان IP الخاص بسيرفرك: " SERVER_IP
 if [ -z "$SERVER_IP" ]; then red "❌ لم يتم إدخال الآي بي."; exit 1; fi
 
@@ -86,7 +87,7 @@ else
 fi
 
 # 7. إعداد سكربت حذف مستخدمي SSH منتهية الصلاحية
-echo -e "\n[7/14] ⏳ إعداد سكربت الحذف التلقائي لمستخدمي SSH..."
+echo -e "\n[7/15] ⏳ إعداد سكربت الحذف التلقائي لمستخدمي SSH..."
 if [ -f "delete_expired_users.sh" ]; then
     mv "delete_expired_users.sh" "/usr/local/bin/"
     chmod +x "/usr/local/bin/delete_expired_users.sh"
@@ -97,7 +98,7 @@ else
 fi
 
 # 8. إعداد سكربت مراقبة اتصالات SSH
-echo -e "\n[8/14] 🔗 إعداد سكربت مراقبة اتصالات SSH المتعددة..."
+echo -e "\n[8/15] 🔗 إعداد سكربت مراقبة اتصالات SSH المتعددة..."
 if [ -f "monitor_connections.sh" ]; then
     sed -i "s/CONNECTION_LIMIT=[0-9]\+/CONNECTION_LIMIT=$SSH_CONNECTION_LIMIT/" "monitor_connections.sh"
     mv "monitor_connections.sh" "/usr/local/bin/"
@@ -114,14 +115,18 @@ echo "        🚀 بدء تثبيت و إعداد V2Ray"
 echo "--------------------------------------------------"
 
 # 9. إدخال دومين V2Ray
-echo -e "\n[9/14] 🌐 إعداد دومين V2Ray..."
+echo -e "\n[9/15] 🌐 إعداد دومين V2Ray..."
 read -p "  - أدخل اسم الدومين الخاص بـ V2Ray (مثال: example.com): " V2RAY_DOMAIN
 if [[ -z ${V2RAY_DOMAIN} ]]; then red "  [خطأ] إدخال الدومين مطلوب."; exit 1; fi
 EMAIL="admin@${V2RAY_DOMAIN}"
 WSPATH="/vless-ws"
 
+# تحديث الدومين في ملف البوت
+sed -i "s/V2RAY_SERVER_ADDRESS = \".*\"/V2RAY_SERVER_ADDRESS = \"${V2RAY_DOMAIN}\"/" "$PROJECT_DIR/bot.py"
+green "  - ✅ تم تحديث الدومين في ملف البوت."
+
 # 10. تثبيت Xray-core
-echo -e "\n[10/14]  xray تثبيت..."
+echo -e "\n[10/15]  xray تثبيت..."
 bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh) >/tmp/xray-install.log 2>&1 || {
     red "فشل تثبيت Xray. راجع /tmp/xray-install.log"; exit 1
 }
@@ -129,7 +134,7 @@ mkdir -p /var/www/html
 chown -R www-data:www-data /var/www/html
 
 # 11. إصدار شهادة TLS
-echo -e "\n[11/14] 🔒 إصدار شهادة TLS..."
+echo -e "\n[11/15] 🔒 إصدار شهادة TLS..."
 cat >/etc/nginx/sites-available/xray_temp <<EOF
 server { listen 80; server_name ${V2RAY_DOMAIN}; root /var/www/html; }
 EOF
@@ -143,7 +148,7 @@ certbot certonly --webroot -w /var/www/html -d "$V2RAY_DOMAIN" -m "$EMAIL" --agr
 }
 
 # 12. إنشاء إعدادات Xray مع API
-echo -e "\n[12/14] ⚙️ إنشاء إعدادات Xray مع واجهة API..."
+echo -e "\n[12/15] ⚙️ إنشاء إعدادات Xray مع واجهة API..."
 UUID=$(cat /proc/sys/kernel/random/uuid)
 cat >/usr/local/etc/xray/config.json <<XRAYCONF
 {
@@ -163,7 +168,7 @@ XRAYCONF
 systemctl enable xray && systemctl restart xray
 
 # 13. إعداد Nginx النهائي
-echo -e "\n[13/14] 🔗 إعداد Nginx النهائي..."
+echo -e "\n[13/15] 🔗 إعداد Nginx النهائي..."
 cat >/etc/nginx/sites-available/xray <<NGINX
 map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
 server { listen 80; server_name ${V2RAY_DOMAIN}; return 301 https://\$host\$request_uri; }
@@ -194,17 +199,24 @@ green "  - ✅ تم إعداد مهمة تجديد الشهادة تلقائيا
 # --- القسم الثالث: التشغيل النهائي ---
 
 # 14. إعداد بيئة بايثون
-echo -e "\n[14/14] 🐍 إعداد البيئة الافتراضية وتثبيت المكتبات..."
+echo -e "\n[14/15] 🐍 إعداد البيئة الافتراضية وتثبيت المكتبات..."
 python3 -m venv venv
 (
     source venv/bin/activate
     echo "  - تحديث pip..."
     pip install --upgrade pip
     
-    echo "  - تثبيت المكتبات الأساسية فقط..."
-    pip install python-telegram-bot flask psutil pytz
+    echo "  - تثبيت المكتبات الأساسية..."
+    pip install python-telegram-bot flask psutil pytz grpcio
+    
+    echo "  - تثبيت xray_api يدويًا لتجنب مشاكل git..."
+    wget https://github.com/wi1dcard/xray_api/archive/refs/heads/master.zip -O xray_api.zip
+    unzip -q xray_api.zip
+    pip install ./xray_api-master/
+    rm xray_api.zip
+    rm -rf xray_api-master
 
-    green "  - ✅ تم تثبيت جميع المكتبات الضرورية بنجاح."
+    green "  - ✅ تم تثبيت جميع المكتبات بنجاح."
 )
 
 # 15. إعداد وتشغيل الخدمات
