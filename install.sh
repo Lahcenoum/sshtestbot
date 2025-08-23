@@ -1,6 +1,6 @@
 #!/bin/bash
 # Final Definitive Version: Aligned with the bot code that uses Xray's own CLI.
-# No external API libraries are needed.
+# No external API libraries are needed. This version avoids using Port 80.
 
 # ========================================================================
 #  سكريبت التثبيت الشامل - SSH/V2Ray Telegram Bot ومراقبة الاتصالات
@@ -133,19 +133,23 @@ bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)
 mkdir -p /var/www/html
 chown -R www-data:www-data /var/www/html
 
-# 11. إصدار شهادة TLS
-echo -e "\n[11/15] 🔒 إصدار شهادة TLS..."
-cat >/etc/nginx/sites-available/xray_temp <<EOF
-server { listen 80; server_name ${V2RAY_DOMAIN}; root /var/www/html; }
-EOF
-ln -sf /etc/nginx/sites-available/xray_temp /etc/nginx/sites-enabled/xray_temp
-rm -f /etc/nginx/sites-enabled/default || true
-ufw allow 80/tcp >/dev/null 2>&1
-systemctl restart nginx
+# 11. إصدار شهادة TLS (بدون استخدام بورت 80)
+echo -e "\n[11/15] 🔒 إصدار شهادة TLS عبر بورت 443..."
+# التأكد من أن بورت 443 مفتوح ومتاح
+ufw allow 443/tcp >/dev/null 2>&1
+# إيقاف Nginx مؤقتاً للسماح لـ Certbot باستخدام بورت 443
+echo "  - إيقاف Nginx مؤقتاً..."
+systemctl stop nginx
+# استصدار الشهادة باستخدام تحدي TLS-ALPN-01
 apt-get install -y certbot
-certbot certonly --webroot -w /var/www/html -d "$V2RAY_DOMAIN" -m "$EMAIL" --agree-tos --no-eff-email -n || {
-    red "فشل إصدار الشهادة. تأكد أن الدومين يشير إلى IP هذا السيرفر وأن المنفذ 80 مفتوح."; exit 1
+certbot certonly --standalone --preferred-challenges tls-alpn-01 -d "$V2RAY_DOMAIN" -m "$EMAIL" --agree-tos --no-eff-email -n || {
+    red "فشل إصدار الشهادة. تأكد أن الدومين يشير إلى IP هذا السيرفر وأن بورت 443 غير مستخدم حالياً.";
+    systemctl start nginx; # إعادة تشغيل Nginx في حالة الفشل
+    exit 1;
 }
+# إعادة تشغيل Nginx بعد الحصول على الشهادة
+echo "  - إعادة تشغيل Nginx..."
+systemctl start nginx
 
 # 12. إنشاء إعدادات Xray مع API
 echo -e "\n[12/15] ⚙️ إنشاء إعدادات Xray مع واجهة API..."
@@ -167,11 +171,10 @@ cat >/usr/local/etc/xray/config.json <<XRAYCONF
 XRAYCONF
 systemctl enable xray && systemctl restart xray
 
-# 13. إعداد Nginx النهائي
-echo -e "\n[13/15] 🔗 إعداد Nginx النهائي..."
+# 13. إعداد Nginx النهائي (بورت 443 فقط)
+echo -e "\n[13/15] 🔗 إعداد Nginx النهائي على بورت 443 فقط..."
 cat >/etc/nginx/sites-available/xray <<NGINX
 map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
-server { listen 80; server_name ${V2RAY_DOMAIN}; return 301 https://\$host\$request_uri; }
 server {
     listen 443 ssl http2;
     server_name ${V2RAY_DOMAIN};
@@ -191,7 +194,6 @@ server {
 NGINX
 ln -sf /etc/nginx/sites-available/xray /etc/nginx/sites-enabled/xray
 rm -f /etc/nginx/sites-enabled/xray_temp || true
-ufw allow 443/tcp >/dev/null 2>&1
 systemctl reload nginx
 { crontab -l 2>/dev/null | grep -v certbot || true; echo "0 3 * * * certbot renew --quiet --post-hook 'systemctl reload nginx'"; } | crontab -
 green "  - ✅ تم إعداد مهمة تجديد الشهادة تلقائياً."
