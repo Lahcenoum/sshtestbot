@@ -921,28 +921,28 @@ def main():
         return f"^({'|'.join(texts)})$"
 
     redeem_code_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(create_lang_regex('redeem_code_button')), redeem_code_start)],
+        entry_points=[MessageHandler(filters.Regex(create_lang_regex('redeem_code_button')) & filters.ChatType.PRIVATE, redeem_code_start)],
         states={REDEEM_CODE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, redeem_code_received)]},
         fallbacks=[CommandHandler('cancel', cancel_conversation)],
         **conv_defaults
     )
     # --- END OF LANGUAGE FIX ---
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_panel))
-    app.add_handler(CommandHandler("language", language_command))
+    app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("admin", admin_panel, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("language", language_command, filters=filters.ChatType.PRIVATE))
 
     app.add_handler(add_channel_conv)
     app.add_handler(create_code_conv)
     app.add_handler(redeem_code_conv)
     app.add_handler(edit_info_conv)
 
-    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('get_account_button')), request_new_account))
-    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('my_account_button')), my_accounts))
-    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('balance_button')), balance_command))
-    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('daily_button')), daily_command))
-    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('earn_points_button')), earn_points_command))
-    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('contact_admin_button')), contact_admin_command))
+    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('get_account_button')) & filters.ChatType.PRIVATE, request_new_account))
+    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('my_account_button')) & filters.ChatType.PRIVATE, my_accounts))
+    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('balance_button')) & filters.ChatType.PRIVATE, balance_command))
+    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('daily_button')) & filters.ChatType.PRIVATE, daily_command))
+    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('earn_points_button')) & filters.ChatType.PRIVATE, earn_points_command))
+    app.add_handler(MessageHandler(filters.Regex(create_lang_regex('contact_admin_button')) & filters.ChatType.PRIVATE, contact_admin_command))
     
     app.add_handler(CallbackQueryHandler(account_creation_callback, pattern='^create_ssh$'))
     app.add_handler(CallbackQueryHandler(under_development_callback, pattern='^under_development$'))
