@@ -14,9 +14,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Messa
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 
-#  المكتبة البديلة والجديدة للـ API
-from xray_api.client import XrayClient
-
 # =================================================================================
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
@@ -28,16 +25,6 @@ DB_FILE = 'ssh_bot_users.db'
 # --- إعدادات SSH ---
 SSH_SCRIPT_PATH = '/usr/local/bin/create_ssh_user.sh'
 SSH_ACCOUNT_EXPIRY_DAYS = 2
-
-# --- إعدادات Xray ---
-V2RAY_CONFIG_PATH = "/usr/local/etc/xray/config.json" # تم تحديث المسار لـ Xray
-V2RAY_SERVER_ADDRESS = "your.domain.com"
-V2RAY_SERVER_PORT = 443
-V2RAY_WS_PATH = "/vless-ws"
-#  إعدادات جديدة للـ API
-XRAY_API_HOST = "127.0.0.1"
-XRAY_API_PORT = 10085
-VLESS_INBOUND_TAG = "vless-inbound" #  يجب أن يطابق الـ tag في ملف config.json
 
 # --- قيم نظام النقاط ---
 COST_PER_ACCOUNT = 2
@@ -63,7 +50,7 @@ GROUP_LINK = "https://t.me/dgtliA"
 # =================================================================================
 TEXTS = {
     'ar': {
-        "welcome": "أهلاً بك في بوت الخدمات!\n\nاستخدم الأزرار أدناه لطلب حساب SSH أو V2Ray.",
+        "welcome": "أهلاً بك في بوت الخدمات!\n\nاستخدم الأزرار أدناه لطلب حساب SSH.",
         "get_account_button": "💳 طلب حساب جديد",
         "my_account_button": "👤 حساباتي",
         "balance_button": "💰 رصيدي",
@@ -74,15 +61,12 @@ TEXTS = {
         "contact_admin_button": "👨‍💻 تواصل مع الأدمن",
         "choose_account_type": "اختر نوع الحساب الذي تريده:",
         "ssh_account_button": "🌐 حساب SSH",
-        "v2ray_account_button": "🚀 حساب V2Ray (VLESS)",
-        "v2ray_account_created": "✅ تم إنشاء حساب V2Ray بنجاح!\n\nاضغط على الرابط لنسخه:\n\n<code>{vless_link}</code>",
-        "v2ray_creation_error": "❌ خطأ فني: لم نتمكن من إنشاء حساب V2Ray. يرجى المحاولة لاحقاً.",
-        "my_v2ray_accounts": "\n\n<b>🚀 حسابات V2Ray الخاصة بك:</b>\n",
-        "v2ray_link_label": "🔗 رابط الاشتراك:",
+        "v2ray_account_button": "🚀 حساب V2Ray (قيد التطوير)",
+        "udpcustom_account_button": "⚡️ حساب UDP Custom (قيد التطوير)",
+        "under_development": "🚧 هذه الميزة قيد التطوير حاليًا.",
         "contact_admin_info": "للتواصل مع الأدمن، يرجى مراسلة: {contact_info}",
         "not_enough_points": "⚠️ ليس لديك نقاط كافية. التكلفة هي <b>{cost}</b> نقطة.",
         "creation_error": "❌ حدث خطأ أثناء إنشاء الحساب. قد يكون لديك حساب بالفعل أو خطأ آخر.",
-        "creation_wait": "⏳ لا يمكنك إنشاء حساب جديد الآن. يرجى الانتظار <b>{time_left}</b>.",
         "force_join_prompt": "❗️لاستخدام البوت، يجب عليك الانضمام إلى قناتنا ومجموعتنا أولاً.\n\nبعد الانضمام، اضغط على زر '✅ تحققت'.",
         "force_join_channel_button": "📢 انضم للقناة",
         "force_join_group_button": "👥 انضم للمجموعة",
@@ -159,7 +143,7 @@ def init_db():
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE, referrer_id INTEGER)')
         cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, ssh_password TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS v2ray_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, uuid TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
+        # تم حذف جدول v2ray_accounts
         cursor.execute('CREATE TABLE IF NOT EXISTS reward_channels (channel_id INTEGER PRIMARY KEY, channel_link TEXT NOT NULL, reward_points INTEGER NOT NULL, channel_name TEXT NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS user_channel_rewards (telegram_user_id INTEGER, channel_id INTEGER, PRIMARY KEY (telegram_user_id, channel_id))')
         cursor.execute('CREATE TABLE IF NOT EXISTS redeem_codes (code TEXT PRIMARY KEY, points INTEGER, max_uses INTEGER, current_uses INTEGER DEFAULT 0)')
@@ -230,14 +214,6 @@ def log_activity(func):
         return await func(update, context, *args, **kwargs)
     return wrapper
 
-def restart_xray(): #  يستخدم كخطة بديلة فقط
-    try:
-        subprocess.run(["systemctl", "restart", "xray"], check=True)
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Xray restart failed: {e}")
-        return False
-
 async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
     try:
         channel_member = await context.bot.get_chat_member(REQUIRED_CHANNEL_ID, user_id)
@@ -300,10 +276,16 @@ async def request_new_account(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     keyboard = [
         [InlineKeyboardButton(get_text('ssh_account_button', lang_code), callback_data='create_ssh')],
-        [InlineKeyboardButton(get_text('v2ray_account_button', lang_code), callback_data='create_vless')],
+        [InlineKeyboardButton(get_text('v2ray_account_button', lang_code), callback_data='under_development')],
+        [InlineKeyboardButton(get_text('udpcustom_account_button', lang_code), callback_data='under_development')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(get_text('choose_account_type', lang_code), reply_markup=reply_markup)
+
+async def under_development_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    lang_code = get_user_lang(query.from_user.id)
+    await query.answer(text=get_text('under_development', lang_code), show_alert=True)
 
 async def account_creation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -323,8 +305,7 @@ async def account_creation_callback(update: Update, context: ContextTypes.DEFAUL
 
     if query.data == 'create_ssh':
         await create_ssh_account(update, context)
-    elif query.data == 'create_vless':
-        await create_vless_account(update, context)
+    # تم حذف خيار create_vless
 
 async def create_ssh_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -368,46 +349,6 @@ async def create_ssh_account(update: Update, context: ContextTypes.DEFAULT_TYPE)
         print(f"SSH Creation Error: {e}"); traceback.print_exc()
         await query.edit_message_text(get_text('creation_error', lang_code))
 
-async def create_vless_account(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    lang_code = get_user_lang(user_id)
-
-    new_uuid = str(uuid.uuid4())
-    user_email = f"user-{user_id}"
-
-    try:
-        #  الحل النهائي: استخدام مكتبة xray_api
-        try:
-            client = XrayClient(XRAY_API_HOST, XRAY_API_PORT)
-            client.add_client(VLESS_INBOUND_TAG, new_uuid, user_email)
-            print(f"Successfully added VLESS user {user_email} via xray_api.")
-        except Exception as api_error:
-            print(f"Xray API Error: {api_error}. Could not add user dynamically.")
-            print("Falling back to restarting Xray service...")
-            if not restart_xray():
-                raise Exception("API and restart fallback both failed.")
-
-        # حفظ في قاعدة البيانات وإرسال الرد
-        with sqlite3.connect(DB_FILE) as conn:
-            conn.execute("UPDATE users SET points = points - ? WHERE telegram_user_id = ?", (COST_PER_ACCOUNT, user_id))
-            conn.execute("INSERT INTO v2ray_accounts (telegram_user_id, uuid, created_at) VALUES (?, ?, ?)", (user_id, new_uuid, datetime.now()))
-            conn.commit()
-
-        vless_link = (
-            f"vless://{new_uuid}@{V2RAY_SERVER_ADDRESS}:{V2RAY_SERVER_PORT}"
-            f"?type=ws&security=tls&path={V2RAY_WS_PATH.replace('/', '%2F')}"
-            f"&sni={V2RAY_SERVER_ADDRESS}#{user_email}"
-        )
-        await query.edit_message_text(
-            get_text('v2ray_account_created', lang_code).format(vless_link=vless_link),
-            parse_mode=ParseMode.HTML
-        )
-
-    except Exception as e:
-        print(f"V2Ray Creation Error: {e}"); traceback.print_exc()
-        await query.edit_message_text(get_text('v2ray_creation_error', lang_code))
-
 @log_activity
 async def my_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -417,7 +358,6 @@ async def my_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     with sqlite3.connect(DB_FILE) as conn:
         ssh_accounts = conn.execute("SELECT ssh_username, ssh_password FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
-        v2ray_accounts = conn.execute("SELECT uuid FROM v2ray_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
 
     if ssh_accounts:
         response_parts.append(get_text('your_accounts', lang_code))
@@ -439,16 +379,6 @@ async def my_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ssl_port=html.escape(ssl_port), udpcustom_port=html.escape(udpcustom_port),
                 payload=html.escape(payload)
             ))
-
-    if v2ray_accounts:
-        response_parts.append(get_text('my_v2ray_accounts', lang_code))
-        for (user_uuid,) in v2ray_accounts:
-            vless_link = (
-                f"vless://{user_uuid}@{V2RAY_SERVER_ADDRESS}:{V2RAY_SERVER_PORT}"
-                f"?type=ws&security=tls&path={V2RAY_WS_PATH.replace('/', '%2F')}"
-                f"&sni={V2RAY_SERVER_ADDRESS}#user-{user_id}"
-            )
-            response_parts.append(f"{get_text('v2ray_link_label', lang_code)}\n<code>{vless_link}</code>")
 
     if not response_parts:
         await update.message.reply_text(get_text('no_accounts_found', lang_code))
@@ -922,6 +852,7 @@ def main():
     app.add_handler(MessageHandler(filters.Regex(f"^{re.escape(get_text('contact_admin_button', 'ar'))}$"), contact_admin_command))
     
     app.add_handler(CallbackQueryHandler(account_creation_callback, pattern='^create_'))
+    app.add_handler(CallbackQueryHandler(under_development_callback, pattern='^under_development$'))
     app.add_handler(CallbackQueryHandler(verify_join_callback, pattern='^verify_join$'))
     app.add_handler(CallbackQueryHandler(verify_reward_callback, pattern='^verify_r_'))
     app.add_handler(CallbackQueryHandler(remove_channel_confirm, pattern='^remove_c_'))
