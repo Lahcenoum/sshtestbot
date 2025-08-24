@@ -45,15 +45,17 @@ green "  - ✅ تم العثور على التوكن بنجاح."
 
 # تعريف الرسالة
 MAINTENANCE_MESSAGE=$(cat <<'END_MESSAGE'
-🚧 **إشعار صيانة | Maintenance Notice** 🚧
+🚧 **إشعار صيانة وتحديث | Maintenance & Update Notice** 🚧
 
 **بالعربية:**
-مرحباً، سيتم إيقاف البوت مؤقتاً لإجراء تحديثات وتحسينات.
-للاشتراك في السيرفرات المدفوعة أو لأي استفسار، يرجى التواصل مع الأدمن: @cloudvip
+مرحباً، سيتم إيقاف البوت مؤقتاً لإجراء تحديثات وإصلاحات.
+للاشتراك في السيرفرات المدفوعة بسعر **2 دولار**، يرجى الانضمام إلى قناتنا والتواصل مع الأدمن من هناك:
+https://t.me/CLOUDVIP
 
 **English:**
-Hello, the bot will be temporarily down for maintenance and updates.
-For premium server subscriptions or any inquiries, please contact the admin: @cloudvip
+Hello, the bot will be temporarily down for maintenance and bug fixes.
+To subscribe to our premium servers for **$2**, please join our channel and contact the admin there:
+https://t.me/CLOUDVIP
 END_MESSAGE
 )
 
