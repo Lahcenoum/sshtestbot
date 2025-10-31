@@ -8,7 +8,8 @@ import traceback
 import html
 import json
 import uuid
-import requests 
+import requests
+import logging # تم إضافة مكتبة التسجيل
 from datetime import datetime, date, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
@@ -18,7 +19,8 @@ from telegram.error import BadRequest
 # =================================================================================
 # 1. الإعدادات الرئيسية (Configuration)
 # =================================================================================
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+# ⚠️ قم بتعديل هذا
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN" 
 ADMIN_USER_ID = 5344028088
 ADMIN_CONTACT_INFO = "@YourAdminUsername"
 DB_FILE = 'ssh_bot_users.db'
@@ -33,7 +35,7 @@ DAILY_LOGIN_BONUS = 1
 INITIAL_POINTS = 2
 JOIN_BONUS = 0
 REFERRAL_BONUS = 2
-AD_REWARD_POINTS = 1 # نقطة واحدة مقابل الإعلان
+AD_REWARD_POINTS = 1
 
 # --- إعدادات الإعلانات (SSP/RichAds) ---
 SSP_ENDPOINT = "http://15068.xml.adx1.com/telegram-mb"
@@ -133,7 +135,7 @@ TEXTS = {
         "operation_cancelled": "✅ تم إلغاء العملية.",
         "creating_account": "جاري إنشاء الحساب...",
         "points": "نقاط",
-        "watch_ad_button": "📺 شاهد إعلاناً (+{points} نقطة)", 
+        "watch_ad_button": "📺 شاهد إعلاناً (+{points} نقطة)",
         "watch_ad_info": "🎁 مكافأة الإعلان اليومية\n\nيمكنك مشاهدة إعلان واحد كل 24 ساعة وكسب <b>{points}</b> نقطة.\n\nاضغط على الزر أدناه لمشاهدة الإعلان والمطالبة بنقاطك.",
         "ad_claimed_already": "⏱️ لقد شاهدت الإعلان اليوم. يمكنك المحاولة مرة أخرى بعد: {time_left}.",
         "ad_server_error": "❌ خطأ في الإعلان. لم نتمكن من جلب إعلان حالياً. حاول مجدداً.",
@@ -231,88 +233,120 @@ TEXTS = {
 }
 
 def get_text(key, lang_code='ar'):
-    # Default to 'ar' if the language code is not supported
     if lang_code not in TEXTS:
         lang_code = 'ar'
-    # Try to get the text in the specified language, fallback to Arabic if the key is missing
     return TEXTS[lang_code].get(key, TEXTS['ar'].get(key, key))
 
 # =================================================================================
 # 3. إدارة قاعدة البيانات (Database Management)
 # =================================================================================
 def init_db():
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE, referrer_id INTEGER, ad_claim_pending INTEGER DEFAULT 0)') # تم إضافة ad_claim_pending
-        cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, ssh_password TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS reward_channels (channel_id INTEGER PRIMARY KEY, channel_link TEXT NOT NULL, reward_points INTEGER NOT NULL, channel_name TEXT NOT NULL)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS user_channel_rewards (telegram_user_id INTEGER, channel_id INTEGER, PRIMARY KEY (telegram_user_id, channel_id))')
-        cursor.execute('CREATE TABLE IF NOT EXISTS redeem_codes (code TEXT PRIMARY KEY, points INTEGER, max_uses INTEGER, current_uses INTEGER DEFAULT 0)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS redeemed_users (code TEXT, telegram_user_id INTEGER, PRIMARY KEY (code, telegram_user_id))')
-        cursor.execute('CREATE TABLE IF NOT EXISTS daily_activity (user_id INTEGER PRIMARY KEY, last_seen_date DATE NOT NULL)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS connection_settings (key TEXT PRIMARY KEY, value TEXT)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS ad_claims (telegram_user_id INTEGER PRIMARY KEY, last_ad_claim TIMESTAMP)')
-        
-        default_settings = {
-            "hostname": "your.hostname.com", "ws_ports": "80, 8880, 8888, 2053",
-            "ssl_port": "443", "udpcustom_port": "7300", "admin_contact": ADMIN_CONTACT_INFO,
-            "payload": "your.default.payload"
-        }
-        for key, value in default_settings.items():
-            cursor.execute("INSERT OR IGNORE INTO connection_settings (key, value) VALUES (?, ?)", (key, value))
-        conn.commit()
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE, referrer_id INTEGER, ad_claim_pending INTEGER DEFAULT 0)')
+            cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, ssh_password TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
+            cursor.execute('CREATE TABLE IF NOT EXISTS reward_channels (channel_id INTEGER PRIMARY KEY, channel_link TEXT NOT NULL, reward_points INTEGER NOT NULL, channel_name TEXT NOT NULL)')
+            cursor.execute('CREATE TABLE IF NOT EXISTS user_channel_rewards (telegram_user_id INTEGER, channel_id INTEGER, PRIMARY KEY (telegram_user_id, channel_id))')
+            cursor.execute('CREATE TABLE IF NOT EXISTS redeem_codes (code TEXT PRIMARY KEY, points INTEGER, max_uses INTEGER, current_uses INTEGER DEFAULT 0)')
+            cursor.execute('CREATE TABLE IF NOT EXISTS redeemed_users (code TEXT, telegram_user_id INTEGER, PRIMARY KEY (code, telegram_user_id))')
+            cursor.execute('CREATE TABLE IF NOT EXISTS daily_activity (user_id INTEGER PRIMARY KEY, last_seen_date DATE NOT NULL)')
+            cursor.execute('CREATE TABLE IF NOT EXISTS connection_settings (key TEXT PRIMARY KEY, value TEXT)')
+            cursor.execute('CREATE TABLE IF NOT EXISTS ad_claims (telegram_user_id INTEGER PRIMARY KEY, last_ad_claim TIMESTAMP)')
+            
+            default_settings = {
+                "hostname": "your.hostname.com", "ws_ports": "80, 8880, 8888, 2053",
+                "ssl_port": "443", "udpcustom_port": "7300", "admin_contact": ADMIN_CONTACT_INFO,
+                "payload": "your.default.payload"
+            }
+            for key, value in default_settings.items():
+                cursor.execute("INSERT OR IGNORE INTO connection_settings (key, value) VALUES (?, ?)", (key, value))
+            conn.commit()
+        logging.info("Database initialization successful.")
+    except Exception as e:
+        logging.error(f"FATAL ERROR during database initialization: {e}")
+        # إذا فشلت تهيئة القاعدة، لا يمكن تشغيل البوت
+        sys.exit(1)
+
 
 async def get_or_create_user(user_id, lang_code='ar', referrer_id=None, context: ContextTypes.DEFAULT_TYPE = None):
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        is_new_user = not cursor.execute("SELECT 1 FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
-        if is_new_user:
-            today = date.today().isoformat()
-            cursor.execute("INSERT INTO users (telegram_user_id, points, language_code, created_date, referrer_id) VALUES (?, ?, ?, ?, ?)", (user_id, INITIAL_POINTS, lang_code, today, referrer_id))
-            conn.commit()
-            if referrer_id and context:
-                try:
-                    cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (REFERRAL_BONUS, referrer_id))
-                    conn.commit()
-                    referrer_lang = get_user_lang(referrer_id)
-                    await context.bot.send_message(
-                        chat_id=referrer_id,
-                        text=get_text('referral_bonus_notification', referrer_lang).format(bonus=REFERRAL_BONUS),
-                        parse_mode=ParseMode.HTML
-                    )
-                except Exception as e:
-                    print(f"Error awarding referral bonus to {referrer_id}: {e}")
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            is_new_user = not cursor.execute("SELECT 1 FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
+            if is_new_user:
+                today = date.today().isoformat()
+                cursor.execute("INSERT INTO users (telegram_user_id, points, language_code, created_date, referrer_id) VALUES (?, ?, ?, ?, ?)", (user_id, INITIAL_POINTS, lang_code, today, referrer_id))
+                conn.commit()
+                logging.info(f"New user {user_id} created.")
+                if referrer_id and context:
+                    try:
+                        cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (REFERRAL_BONUS, referrer_id))
+                        conn.commit()
+                        referrer_lang = get_user_lang(referrer_id)
+                        await context.bot.send_message(
+                            chat_id=referrer_id,
+                            text=get_text('referral_bonus_notification', referrer_lang).format(bonus=REFERRAL_BONUS),
+                            parse_mode=ParseMode.HTML
+                        )
+                        logging.info(f"Referral bonus awarded to {referrer_id}.")
+                    except Exception as e:
+                        logging.error(f"Error awarding referral bonus to {referrer_id}: {e}")
+    except Exception as e:
+        logging.error(f"Database error in get_or_create_user for {user_id}: {e}")
+
 
 def get_user_lang(user_id):
-    with sqlite3.connect(DB_FILE) as conn:
-        res = conn.execute("SELECT language_code FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
-        return res[0] if res else 'ar'
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            res = conn.execute("SELECT language_code FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
+            return res[0] if res else 'ar'
+    except Exception as e:
+        logging.error(f"Database error in get_user_lang for {user_id}: {e}")
+        return 'ar'
 
 def get_user_ad_status(user_id):
-    with sqlite3.connect(DB_FILE) as conn:
-        # استرجاع حالة انتظار المكافأة
-        ad_pending = conn.execute("SELECT ad_claim_pending FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
-        return ad_pending[0] if ad_pending else 0
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            ad_pending = conn.execute("SELECT ad_claim_pending FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
+            return ad_pending[0] if ad_pending else 0
+    except Exception as e:
+        logging.error(f"Database error in get_user_ad_status for {user_id}: {e}")
+        return 0
 
 def set_user_ad_status(user_id, status: int):
-     with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("UPDATE users SET ad_claim_pending = ? WHERE telegram_user_id = ?", (status, user_id))
-        conn.commit()
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.execute("UPDATE users SET ad_claim_pending = ? WHERE telegram_user_id = ?", (status, user_id))
+            conn.commit()
+    except Exception as e:
+        logging.error(f"Database error in set_user_ad_status for {user_id}: {e}")
 
 def set_user_lang(user_id, lang_code):
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("UPDATE users SET language_code = ? WHERE telegram_user_id = ?", (lang_code, user_id))
-        conn.commit()
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.execute("UPDATE users SET language_code = ? WHERE telegram_user_id = ?", (lang_code, user_id))
+            conn.commit()
+    except Exception as e:
+        logging.error(f"Database error in set_user_lang for {user_id}: {e}")
 
 def get_connection_setting(key):
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("SELECT value FROM connection_settings WHERE key = ?", (key,)).fetchone()
-        return result[0] if result else ""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            result = conn.execute("SELECT value FROM connection_settings WHERE key = ?", (key,)).fetchone()
+            return result[0] if result else ""
+    except Exception as e:
+        logging.error(f"Database error in get_connection_setting for key {key}: {e}")
+        return ""
 
 def set_connection_setting(key, value):
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("INSERT OR REPLACE INTO connection_settings (key, value) VALUES (?, ?)", (key, value))
-        conn.commit()
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.execute("INSERT OR REPLACE INTO connection_settings (key, value) VALUES (?, ?)", (key, value))
+            conn.commit()
+            logging.info(f"Connection setting {key} updated.")
+    except Exception as e:
+        logging.error(f"Database error in set_connection_setting for key {key}: {e}")
 
 # =================================================================================
 # 4. دوال مساعدة (Helpers)
@@ -321,9 +355,12 @@ def log_activity(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user_id = update.effective_user.id
         today = date.today().isoformat()
-        with sqlite3.connect(DB_FILE) as conn:
-            conn.execute("INSERT OR REPLACE INTO daily_activity (user_id, last_seen_date) VALUES (?, ?)", (user_id, today))
-            conn.commit()
+        try:
+            with sqlite3.connect(DB_FILE) as conn:
+                conn.execute("INSERT OR REPLACE INTO daily_activity (user_id, last_seen_date) VALUES (?, ?)", (user_id, today))
+                conn.commit()
+        except Exception as e:
+            logging.error(f"Database error in log_activity for {user_id}: {e}")
         return await func(update, context, *args, **kwargs)
     return wrapper
 
@@ -335,7 +372,7 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
         if group_member.status not in ['member', 'administrator', 'creator']: return False
         return True
     except Exception as e:
-        print(f"Error checking membership for {user_id}: {e}")
+        logging.warning(f"Error checking membership for {user_id}: {e}")
         return False
         
 # =================================================================================
@@ -344,23 +381,27 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def get_ad_eligibility(user_id: int):
     """التحقق مما إذا كان المستخدم مؤهلاً لبدء طلب الإعلان اليوم."""
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("SELECT last_ad_claim FROM ad_claims WHERE telegram_user_id = ?", (user_id,)).fetchone()
-        if not result:
-            return True, None 
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            result = conn.execute("SELECT last_ad_claim FROM ad_claims WHERE telegram_user_id = ?", (user_id,)).fetchone()
+            if not result:
+                return True, None
 
-        last_claim_time = datetime.fromisoformat(result[0])
-        time_since_claim = datetime.now() - last_claim_time
-        
-        if time_since_claim >= timedelta(hours=24):
-            return True, None 
-        
-        time_left = timedelta(hours=24) - time_since_claim
-        hours = int(time_left.total_seconds() // 3600)
-        minutes = int((time_left.total_seconds() % 3600) // 60)
-        
-        time_left_str = f"{hours}h {minutes}m"
-        return False, time_left_str
+            last_claim_time = datetime.fromisoformat(result[0])
+            time_since_claim = datetime.now() - last_claim_time
+            
+            if time_since_claim >= timedelta(hours=24):
+                return True, None
+            
+            time_left = timedelta(hours=24) - time_since_claim
+            hours = int(time_left.total_seconds() // 3600)
+            minutes = int((time_left.total_seconds() % 3600) // 60)
+            
+            time_left_str = f"{hours}h {minutes}m"
+            return False, time_left_str
+    except Exception as e:
+        logging.error(f"Database error in get_ad_eligibility for {user_id}: {e}")
+        return True, None # افتراض الصلاحية في حالة خطأ القاعدة
 
 async def get_and_send_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -372,9 +413,11 @@ async def get_and_send_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ad_pending = get_user_ad_status(user_id)
     
     if ad_pending:
-         await context.bot.send_message(chat_id=chat_id, text=get_text('ad_already_pending', lang_code), parse_mode=ParseMode.HTML); return
+        logging.warning(f"User {user_id} tried to claim ad while pending.")
+        await context.bot.send_message(chat_id=chat_id, text=get_text('ad_already_pending', lang_code), parse_mode=ParseMode.HTML); return
         
     if not is_eligible:
+        logging.info(f"User {user_id} is not eligible for ad claim yet.")
         await context.bot.send_message(
             chat_id=chat_id,
             text=get_text('ad_claimed_already', lang_code).format(time_left=time_left),
@@ -403,6 +446,7 @@ async def get_and_send_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ad_data = ssp_response.json()
         
         if not ad_data or not isinstance(ad_data, list) or len(ad_data) == 0:
+            logging.warning(f"SSP returned empty response for user {user_id}. Status: {ssp_response.status_code}")
             await context.bot.send_message(chat_id=chat_id, text=get_text('ad_server_error', lang_code))
             return
             
@@ -415,7 +459,6 @@ async def get_and_send_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Brand: {html.escape(ad.get('brand', ''))}"
         )
         
-        # الزر الأول: زر النقر على الإعلان (للذهاب إلى الرابط)
         ad_inline_keyboard = {
             "inline_keyboard": [
                 [
@@ -428,7 +471,7 @@ async def get_and_send_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         telegram_payload = {
             'chat_id': chat_id,
-            'photo': ad.get('image', 'https://placehold.co/600x400/AAAAAA/FFFFFF?text=AD'), 
+            'photo': ad.get('image', 'https://placehold.co/600x400/AAAAAA/FFFFFF?text=AD'),
             'caption': caption_text,
             'parse_mode': 'Markdown',
             'reply_markup': json.dumps(ad_inline_keyboard)
@@ -437,7 +480,7 @@ async def get_and_send_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         telegram_response = requests.post(TELEGRAM_URL, data=telegram_payload)
         telegram_response.raise_for_status()
         
-        # 4. إرسال رسالة التأكيد والمكافأة (رسالة منفصلة لتحفيز العودة والنقر)
+        # 4. إرسال رسالة التأكيد والمكافأة (رسالة منفصلة)
         verification_keyboard = [[InlineKeyboardButton(get_text('verify_ad_button', lang_code), callback_data='verify_ad_click')]]
         
         await context.bot.send_message(
@@ -449,10 +492,11 @@ async def get_and_send_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 5. تسجيل حالة انتظار المكافأة
         set_user_ad_status(user_id, 1)
+        logging.info(f"Ad sent to {user_id}. Pending verification.")
 
         
     except requests.exceptions.RequestException as e:
-        print(f"AD Integration Error: {e}"); traceback.print_exc()
+        logging.error(f"AD Request/Telegram API Error for user {user_id}: {e}", exc_info=True)
         await context.bot.send_message(chat_id=chat_id, text=get_text('ad_server_error', lang_code))
 
 async def verify_ad_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -475,13 +519,15 @@ async def verify_ad_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
             new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
             conn.commit()
             
+        logging.info(f"Ad reward of {AD_REWARD_POINTS} granted to user {user_id}.")
+        
         await query.edit_message_text(
             get_text('ad_success', lang_code).format(points=AD_REWARD_POINTS),
             parse_mode=ParseMode.HTML
         )
         
     except Exception as e:
-        print(f"Error processing ad reward: {e}")
+        logging.error(f"Error processing ad reward for {user_id}: {e}", exc_info=True)
         await query.edit_message_text(f"❌ حدث خطأ أثناء منح المكافأة: {e}")
         
     # تحديث قائمة كسب النقاط
@@ -496,14 +542,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callbac
     user = update.effective_user
     message = update.message if not from_callback else update.callback_query.message
     
-    # --- START OF LANGUAGE FIX ---
-    # Get user's telegram language
-    user_lang = user.language_code
-    # Default to 'ar' if the language is not supported by the bot
-    if user_lang not in TEXTS:
-        user_lang = 'ar'
-    # --- END OF LANGUAGE FIX ---
-
+    user_lang = user.language_code if user.language_code in TEXTS else 'ar'
     referrer_id = None
     if context.args and context.args[0].startswith('ref_'):
         try:
@@ -538,8 +577,13 @@ async def request_new_account(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     lang_code = get_user_lang(user_id)
     
-    with sqlite3.connect(DB_FILE) as conn:
-        user_points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            user_points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+    except Exception as e:
+        logging.error(f"DB Error fetching points for {user_id}: {e}")
+        await update.message.reply_text("❌ خطأ داخلي في قاعدة البيانات.")
+        return
     
     if user_points < COST_PER_ACCOUNT:
         await update.message.reply_text(get_text('not_enough_points', lang_code).format(cost=COST_PER_ACCOUNT), parse_mode=ParseMode.HTML)
@@ -565,8 +609,13 @@ async def account_creation_callback(update: Update, context: ContextTypes.DEFAUL
     user_id = query.from_user.id
     lang_code = get_user_lang(user_id)
 
-    with sqlite3.connect(DB_FILE) as conn:
-        user_points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            user_points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+    except Exception as e:
+        logging.error(f"DB Error fetching points for {user_id} before creation: {e}")
+        await query.edit_message_text(get_text('creation_error', lang_code))
+        return
     
     if user_points < COST_PER_ACCOUNT:
         await query.edit_message_text(get_text('not_enough_points', lang_code).format(cost=COST_PER_ACCOUNT), parse_mode=ParseMode.HTML)
@@ -587,6 +636,7 @@ async def create_ssh_account(update: Update, context: ContextTypes.DEFAULT_TYPE)
         password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
         command_to_run = ["sudo", SSH_SCRIPT_PATH, username, password, str(SSH_ACCOUNT_EXPIRY_DAYS)]
 
+        # تنفيذ سكريبت SSH
         process = subprocess.run(command_to_run, capture_output=True, text=True, timeout=30, check=True)
         
         with sqlite3.connect(DB_FILE) as conn:
@@ -601,7 +651,6 @@ async def create_ssh_account(update: Update, context: ContextTypes.DEFAULT_TYPE)
         payload = get_connection_setting("payload")
         
         try:
-            # افتراض أن chage موجود لتتبع الانتهاء
             expiry_output = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True, stderr=subprocess.DEVNULL)
             expiry_line = next((line for line in expiry_output.split('\n') if "Account expires" in line), None)
             expiry = expiry_line.split(':', 1)[1].strip() if expiry_line else "N/A"
@@ -614,10 +663,14 @@ async def create_ssh_account(update: Update, context: ContextTypes.DEFAULT_TYPE)
             ssl_port=html.escape(ssl_port), udpcustom_port=html.escape(udpcustom_port),
             payload=html.escape(payload)
         )
+        logging.info(f"SSH account created for user {user_id}. Output: {process.stdout}")
         await query.edit_message_text(account_info, parse_mode=ParseMode.HTML)
 
+    except subprocess.CalledProcessError as e:
+        logging.error(f"SSH Script execution failed for {user_id}. Stderr: {e.stderr}")
+        await query.edit_message_text(get_text('creation_error', lang_code) + f"\n\nDetails: SSH Script Error.")
     except Exception as e:
-        print(f"SSH Creation Error: {e}"); traceback.print_exc()
+        logging.error(f"SSH Creation Error for {user_id}: {e}"); traceback.print_exc()
         await query.edit_message_text(get_text('creation_error', lang_code))
 
 @log_activity
@@ -627,8 +680,13 @@ async def my_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     response_parts = []
     
-    with sqlite3.connect(DB_FILE) as conn:
-        ssh_accounts = conn.execute("SELECT ssh_username, ssh_password FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            ssh_accounts = conn.execute("SELECT ssh_username, ssh_password FROM ssh_accounts WHERE telegram_user_id = ?", (user_id,)).fetchall()
+    except Exception as e:
+        logging.error(f"DB Error fetching accounts for {user_id}: {e}")
+        await update.message.reply_text("❌ خطأ داخلي في قاعدة البيانات.")
+        return
 
     if ssh_accounts:
         response_parts.append(get_text('your_accounts', lang_code))
@@ -662,63 +720,66 @@ async def my_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang_code = get_user_lang(user_id)
-    with sqlite3.connect(DB_FILE) as conn:
-        points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            points = conn.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+    except Exception as e:
+        logging.error(f"DB Error fetching balance for {user_id}: {e}")
+        points = 0
     await update.message.reply_text(get_text('balance_info', lang_code).format(points=points), parse_mode=ParseMode.HTML)
 
 @log_activity
 async def daily_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang_code = get_user_lang(user_id)
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        today = date.today()
-        last_claim_str = cursor.execute("SELECT last_daily_claim FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-        
-        if last_claim_str and date.fromisoformat(last_claim_str) >= today:
-            await update.message.reply_text(get_text('daily_bonus_already_claimed', lang_code)); return
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            today = date.today()
+            last_claim_str = cursor.execute("SELECT last_daily_claim FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
             
-        cursor.execute("UPDATE users SET points = points + ?, last_daily_claim = ? WHERE telegram_user_id = ?", (DAILY_LOGIN_BONUS, today.isoformat(), user_id))
-        conn.commit()
-        new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-        await update.message.reply_text(get_text('daily_bonus_claimed', lang_code).format(bonus=DAILY_LOGIN_BONUS, new_balance=new_balance), parse_mode=ParseMode.HTML)
+            if last_claim_str and date.fromisoformat(last_claim_str) >= today:
+                await update.message.reply_text(get_text('daily_bonus_already_claimed', lang_code)); return
+                
+            cursor.execute("UPDATE users SET points = points + ?, last_daily_claim = ? WHERE telegram_user_id = ?", (DAILY_LOGIN_BONUS, today.isoformat(), user_id))
+            conn.commit()
+            new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+            logging.info(f"Daily bonus claimed by {user_id}.")
+            await update.message.reply_text(get_text('daily_bonus_claimed', lang_code).format(bonus=DAILY_LOGIN_BONUS, new_balance=new_balance), parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logging.error(f"DB Error in daily_command for {user_id}: {e}")
+        await update.message.reply_text("❌ خطأ داخلي في قاعدة البيانات.")
 
 @log_activity
 async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False):
     user_id = update.effective_user.id
     lang_code = get_user_lang(user_id)
-    with sqlite3.connect(DB_FILE) as conn:
-        all_channels = conn.execute("SELECT channel_id, channel_link, reward_points, channel_name FROM reward_channels").fetchall()
-        claimed_ids = {row[0] for row in conn.execute("SELECT channel_id FROM user_channel_rewards WHERE telegram_user_id = ?", (user_id,))}
-        
-    # =========================================================================
-    # 📌 إضافة زر مشاهدة الإعلان
-    # =========================================================================
-    
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            all_channels = conn.execute("SELECT channel_id, channel_link, reward_points, channel_name FROM reward_channels").fetchall()
+            claimed_ids = {row[0] for row in conn.execute("SELECT channel_id FROM user_channel_rewards WHERE telegram_user_id = ?", (user_id,))}
+    except Exception as e:
+        logging.error(f"DB Error fetching reward channels for {user_id}: {e}")
+        all_channels = []
+        claimed_ids = set()
+
     keyboard = []
     
-    # زر مشاهدة الإعلان
     is_eligible, ad_time_left = await get_ad_eligibility(user_id)
     ad_button_text = get_text('watch_ad_button', lang_code).format(points=AD_REWARD_POINTS)
     
     ad_pending = get_user_ad_status(user_id)
 
     if ad_pending:
-        # إذا كان ينتظر المكافأة، عرض زر التحقق
         keyboard.append([InlineKeyboardButton(get_text('verify_ad_button', lang_code), callback_data='verify_ad_click')])
     elif is_eligible:
-        # إذا كان مؤهلاً (مر 24 ساعة)، عرض زر المشاهدة لبدء العملية
         keyboard.append([InlineKeyboardButton(ad_button_text, callback_data='watch_ad')])
     else:
-        # إذا لم يكن مؤهلاً، عرض الوقت المتبقي
         ad_info = get_text('ad_claimed_already', lang_code).format(time_left=ad_time_left)
         keyboard.append([InlineKeyboardButton(ad_info, callback_data='dummy')])
         
     keyboard.append([InlineKeyboardButton("-------------------------------------", callback_data="dummy")])
     
-    # =========================================================================
-    # قنوات الانضمام العادية
-    # =========================================================================
     for cid, link, points, name in all_channels:
         if cid in claimed_ids:
             button_text = f"✅ {name}"
@@ -734,11 +795,14 @@ async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard.append([InlineKeyboardButton(get_text('referral_button', lang_code), callback_data='get_referral_link')])
 
     if from_callback:
-        reply_func = update.callback_query.edit_message_text
+        try:
+            reply_func = update.callback_query.edit_message_text
+            await reply_func(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            logging.warning(f"Error editing message for earn_points: {e}. Sending new message.")
+            await update.callback_query.message.reply_text(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
     else:
-        reply_func = update.message.reply_text
-        
-    await reply_func(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
 
 @log_activity
 async def contact_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -787,11 +851,15 @@ async def show_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = date.today().isoformat()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
 
-    with sqlite3.connect(DB_FILE) as conn:
-        total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-        active_today = conn.execute("SELECT COUNT(*) FROM daily_activity WHERE last_seen_date = ?", (today,)).fetchone()[0]
-        active_yesterday = conn.execute("SELECT COUNT(*) FROM daily_activity WHERE last_seen_date = ?", (yesterday,)).fetchone()[0]
-        new_today = conn.execute("SELECT COUNT(*) FROM users WHERE created_date = ?", (today,)).fetchone()[0]
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            active_today = conn.execute("SELECT COUNT(*) FROM daily_activity WHERE last_seen_date = ?", (today,)).fetchone()[0]
+            active_yesterday = conn.execute("SELECT COUNT(*) FROM daily_activity WHERE last_seen_date = ?", (yesterday,)).fetchone()[0]
+            new_today = conn.execute("SELECT COUNT(*) FROM users WHERE created_date = ?", (today,)).fetchone()[0]
+    except Exception as e:
+        logging.error(f"DB Error in user_stats: {e}")
+        total_users, active_today, active_yesterday, new_today = 0, 0, 0, 0
     
     stats_text = get_text('user_stats_info', lang_code).format(
         total_users=total_users,
@@ -989,26 +1057,32 @@ async def redeem_code_received(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
     lang_code = get_user_lang(user_id)
     code = update.message.text
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        code_data = cursor.execute("SELECT points, max_uses, current_uses FROM redeem_codes WHERE code = ?", (code,)).fetchone()
-        
-        if not code_data:
-            await update.message.reply_text(get_text('redeem_invalid_code', lang_code)); return ConversationHandler.END
-        
-        points, max_uses, current_uses = code_data
-        if current_uses >= max_uses:
-            await update.message.reply_text(get_text('redeem_limit_reached', lang_code)); return ConversationHandler.END
-        
-        if cursor.execute("SELECT 1 FROM redeemed_users WHERE code = ? AND telegram_user_id = ?", (code, user_id)).fetchone():
-            await update.message.reply_text(get_text('redeem_already_used', lang_code)); return ConversationHandler.END
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            code_data = cursor.execute("SELECT points, max_uses, current_uses FROM redeem_codes WHERE code = ?", (code,)).fetchone()
             
-        cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
-        cursor.execute("UPDATE redeem_codes SET current_uses = current_uses + 1 WHERE code = ?", (code,))
-        cursor.execute("INSERT INTO redeemed_users (code, telegram_user_id) VALUES (?, ?)", (code, user_id))
-        new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-        await update.message.reply_text(get_text('redeem_success', lang_code).format(points=points, new_balance=new_balance), parse_mode=ParseMode.HTML)
-    return ConversationHandler.END
+            if not code_data:
+                await update.message.reply_text(get_text('redeem_invalid_code', lang_code)); return ConversationHandler.END
+            
+            points, max_uses, current_uses = code_data
+            if current_uses >= max_uses:
+                await update.message.reply_text(get_text('redeem_limit_reached', lang_code)); return ConversationHandler.END
+            
+            if cursor.execute("SELECT 1 FROM redeemed_users WHERE code = ? AND telegram_user_id = ?", (code, user_id)).fetchone():
+                await update.message.reply_text(get_text('redeem_already_used', lang_code)); return ConversationHandler.END
+                
+            cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
+            cursor.execute("UPDATE redeem_codes SET current_uses = current_uses + 1 WHERE code = ?", (code,))
+            cursor.execute("INSERT INTO redeemed_users (code, telegram_user_id) VALUES (?, ?)", (code, user_id))
+            new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+            await update.message.reply_text(get_text('redeem_success', lang_code).format(points=points, new_balance=new_balance), parse_mode=ParseMode.HTML)
+            logging.info(f"User {user_id} redeemed code {code}.")
+        return ConversationHandler.END
+    except Exception as e:
+        logging.error(f"DB Error in redeem_code_received for {user_id}: {e}")
+        await update.message.reply_text("❌ خطأ داخلي في قاعدة البيانات.")
+        return ConversationHandler.END
 
 async def get_referral_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1030,16 +1104,20 @@ async def verify_join_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     lang_code = get_user_lang(user_id)
 
     if await check_membership(user_id, context):
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            claimed = cursor.execute("SELECT join_bonus_claimed FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
-            if not claimed:
-                cursor.execute("UPDATE users SET points = points + ?, join_bonus_claimed = 1 WHERE telegram_user_id = ?", (JOIN_BONUS, user_id))
-                conn.commit()
-                await query.answer(get_text('join_bonus_awarded', lang_code).format(bonus=JOIN_BONUS), show_alert=True)
-            
-        await query.edit_message_text(get_text('force_join_success', lang_code))
-        await start(update, context, from_callback=True)
+        try:
+            with sqlite3.connect(DB_FILE) as conn:
+                cursor = conn.cursor()
+                claimed = cursor.execute("SELECT join_bonus_claimed FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+                if not claimed:
+                    cursor.execute("UPDATE users SET points = points + ?, join_bonus_claimed = 1 WHERE telegram_user_id = ?", (JOIN_BONUS, user_id))
+                    conn.commit()
+                    await query.answer(get_text('join_bonus_awarded', lang_code).format(bonus=JOIN_BONUS), show_alert=True)
+                
+            await query.edit_message_text(get_text('force_join_success', lang_code))
+            await start(update, context, from_callback=True)
+        except Exception as e:
+            logging.error(f"DB Error in verify_join_callback for {user_id}: {e}")
+            await query.answer("❌ خطأ في منح المكافأة.", show_alert=True)
     else:
         await query.answer(get_text('force_join_fail', lang_code), show_alert=True)
 
@@ -1059,31 +1137,68 @@ async def verify_reward_callback(update: Update, context: ContextTypes.DEFAULT_T
         if member.status not in ['member', 'administrator', 'creator']:
             await query.answer(get_text('reward_fail', lang_code), show_alert=True); return
     except Exception as e:
+        logging.warning(f"Verification error for channel {channel_id} and user {user_id}: {e}")
         await query.answer(f"Error: Could not verify. Make sure the bot is an admin in the channel.", show_alert=True); return
     
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        if cursor.execute("SELECT 1 FROM user_channel_rewards WHERE telegram_user_id = ? AND channel_id = ?", (user_id, channel_id)).fetchone():
-            await query.answer("You have already claimed this reward.", show_alert=True); return
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            if cursor.execute("SELECT 1 FROM user_channel_rewards WHERE telegram_user_id = ? AND channel_id = ?", (user_id, channel_id)).fetchone():
+                await query.answer("You have already claimed this reward.", show_alert=True); return
+            
+            cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
+            cursor.execute("INSERT INTO user_channel_rewards (telegram_user_id, channel_id) VALUES (?, ?)", (user_id, channel_id))
+            conn.commit()
         
-        cursor.execute("UPDATE users SET points = points + ? WHERE telegram_user_id = ?", (points, user_id))
-        cursor.execute("INSERT INTO user_channel_rewards (telegram_user_id, channel_id) VALUES (?, ?)", (user_id, channel_id))
-        conn.commit() # Explicit commit for safety
-    
-    await query.answer(get_text('reward_success', lang_code).format(points=points), show_alert=True)
-    await earn_points_command(update, context, from_callback=True)
+        logging.info(f"User {user_id} claimed reward from channel {channel_id}.")
+        await query.answer(get_text('reward_success', lang_code).format(points=points), show_alert=True)
+        await earn_points_command(update, context, from_callback=True)
+    except Exception as e:
+        logging.error(f"DB Error processing channel reward for {user_id}: {e}")
+        await query.answer("❌ خطأ في قاعدة البيانات أثناء منح المكافأة.", show_alert=True)
 
 async def watch_ad_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة النقر على زر 'شاهد إعلاناً' لبدء عملية العرض."""
     query = update.callback_query
     await query.answer("جاري جلب الإعلان...")
     
-    # استدعاء دالة جلب وإرسال الإعلان، والتي تسجل حالة انتظار المكافأة
     await get_and_send_ad(update, context)
     
-    # تحديث قائمة كسب النقاط لعرض زر التحقق
     await earn_points_command(update, context, from_callback=True)
 
+async def verify_ad_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await verify_ad_claim_implementation(update, context)
+
+async def verify_ad_claim_implementation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يمنح النقطة بعد ضغط المستخدم على زر 'تحققت'."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    lang_code = get_user_lang(user_id)
+    
+    if get_user_ad_status(user_id) == 0:
+        await query.edit_message_text("ℹ️ لا توجد مطالبة إعلان قيد الانتظار حالياً.")
+        return
+        
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET points = points + ?, ad_claim_pending = 0 WHERE telegram_user_id = ?", (AD_REWARD_POINTS, user_id))
+            cursor.execute("INSERT OR REPLACE INTO ad_claims (telegram_user_id, last_ad_claim) VALUES (?, ?)", (user_id, datetime.now().isoformat()))
+            new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+            conn.commit()
+            
+        logging.info(f"Ad reward of {AD_REWARD_POINTS} granted to user {user_id}.")
+        
+        await query.edit_message_text(
+            get_text('ad_success', lang_code).format(points=AD_REWARD_POINTS),
+            parse_mode=ParseMode.HTML
+        )
+        
+    except Exception as e:
+        logging.error(f"Error processing ad reward for {user_id}: {e}", exc_info=True)
+        await query.edit_message_text(f"❌ حدث خطأ أثناء منح المكافأة: {e}")
+        
+    await earn_points_command(update, context, from_callback=True)
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang_code = get_user_lang(update.effective_user.id)
@@ -1095,17 +1210,36 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 # 8. نقطة انطلاق البوت (Main Entry Point)
 # =================================================================================
 def main():
+    # ====================================================================
+    # 📌 تهيئة نظام تسجيل الأخطاء (LOGGING)
+    # ====================================================================
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("bot_errors.log", encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logging.info("Starting bot initialization...")
+    
     init_db()
     
     if "YOUR_TELEGRAM_BOT_TOKEN" in TOKEN:
-        print("FATAL ERROR: Bot token is not set.")
+        logging.error("FATAL ERROR: Bot token is not set in the script file.")
         sys.exit(1)
 
-    # يجب تثبيت مكتبة requests عبر: pip install python-telegram-bot requests
-    app = ApplicationBuilder().token(TOKEN).build()
+    try:
+        app = ApplicationBuilder().token(TOKEN).build()
+    except Exception as e:
+        logging.critical(f"FATAL ERROR: Could not build Application. Token problem? {e}")
+        sys.exit(1)
     
     conv_defaults = {'per_user': True, 'per_message': False, 'allow_reentry': True}
 
+    # ====================================================================
+    # 📌 Conversational Handlers
+    # ====================================================================
     edit_info_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(edit_connection_info_start, pattern='^admin_edit_connection_info$')],
         states={
@@ -1141,8 +1275,6 @@ def main():
         **conv_defaults
     )
     
-    # --- START OF LANGUAGE FIX ---
-    # Create a regex that matches button texts in all supported languages
     def create_lang_regex(key):
         texts = [re.escape(get_text(key, lang)) for lang in TEXTS.keys()]
         return f"^({'|'.join(texts)})$"
@@ -1153,8 +1285,10 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel_conversation)],
         **conv_defaults
     )
-    # --- END OF LANGUAGE FIX ---
-
+    
+    # ====================================================================
+    # 📌 Handlers Registration
+    # ====================================================================
     app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("admin", admin_panel, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("language", language_command, filters=filters.ChatType.PRIVATE))
@@ -1179,12 +1313,16 @@ def main():
     app.add_handler(CallbackQueryHandler(set_language_callback, pattern='^set_lang_'))
     app.add_handler(CallbackQueryHandler(get_referral_link_callback, pattern='^get_referral_link$'))
     app.add_handler(CallbackQueryHandler(watch_ad_callback, pattern='^watch_ad$')) 
-    app.add_handler(CallbackQueryHandler(verify_ad_claim, pattern='^verify_ad_click$')) # المعالج الجديد لزر التحقق
+    app.add_handler(CallbackQueryHandler(verify_ad_claim, pattern='^verify_ad_click$')) 
     app.add_handler(CallbackQueryHandler(lambda u,c: u.callback_query.answer(), pattern='^dummy$'))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern='^admin_'))
 
-    print("Bot is running with SSH-only features...")
-    app.run_polling()
+    logging.info("Bot is running with logging enabled. Check bot_errors.log for details.")
+    try:
+        app.run_polling(poll_interval=1.0)
+    except Exception as e:
+        logging.critical(f"FATAL ERROR: Polling failed: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
