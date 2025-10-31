@@ -8,6 +8,7 @@ import traceback
 import html
 import json
 import uuid
+import requests 
 from datetime import datetime, date, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler, ConversationHandler
@@ -32,6 +33,12 @@ DAILY_LOGIN_BONUS = 1
 INITIAL_POINTS = 2
 JOIN_BONUS = 0
 REFERRAL_BONUS = 2
+AD_REWARD_POINTS = 1 # نقطة واحدة مقابل الإعلان
+
+# --- إعدادات الإعلانات (SSP/RichAds) ---
+SSP_ENDPOINT = "http://15068.xml.adx1.com/telegram-mb"
+SSP_PUBLISHER_ID = "792361"
+SSP_WIDGET_ID = "351352"
 
 # --- إعدادات القنوات ---
 REQUIRED_CHANNEL_ID = -1001932589296
@@ -126,6 +133,14 @@ TEXTS = {
         "operation_cancelled": "✅ تم إلغاء العملية.",
         "creating_account": "جاري إنشاء الحساب...",
         "points": "نقاط",
+        "watch_ad_button": "📺 شاهد إعلاناً (+{points} نقطة)", 
+        "watch_ad_info": "🎁 مكافأة الإعلان اليومية\n\nيمكنك مشاهدة إعلان واحد كل 24 ساعة وكسب <b>{points}</b> نقطة.\n\nاضغط على الزر أدناه لمشاهدة الإعلان والمطالبة بنقاطك.",
+        "ad_claimed_already": "⏱️ لقد شاهدت الإعلان اليوم. يمكنك المحاولة مرة أخرى بعد: {time_left}.",
+        "ad_server_error": "❌ خطأ في الإعلان. لم نتمكن من جلب إعلان حالياً. حاول مجدداً.",
+        "ad_prompt_after_view": "⚠️ يجب عليك الضغط على زر 'Go!' في الرسالة السابقة، ثم العودة والضغط على الزر أدناه لتأكيد المشاهدة والحصول على النقاط.",
+        "ad_success": "🎉 رائع! لقد حصلت على <b>{points}</b> نقطة مقابل مشاهدة الإعلان.",
+        "ad_already_pending": "❌ لقد طالبت بالفعل بمشاهدة إعلان. يرجى الضغط على زر 'تحققت من الإعلان' في الرسالة السابقة.",
+        "verify_ad_button": "✅ تحققت من الإعلان"
     },
     'en': {
         "welcome": "Welcome to the Services Bot!\n\nUse the buttons below to request an SSH account.",
@@ -204,6 +219,14 @@ TEXTS = {
         "operation_cancelled": "✅ Operation cancelled.",
         "creating_account": "Creating account...",
         "points": "Points",
+        "watch_ad_button": "📺 Watch Ad (+{points} Points)",
+        "watch_ad_info": "🎁 Daily Ad Reward\n\nYou can watch one ad every 24 hours and earn <b>{points}</b> points.\n\nClick the button below to view the ad and claim your points.",
+        "ad_claimed_already": "⏱️ You have already claimed the ad reward today. Try again after: {time_left}.",
+        "ad_server_error": "❌ Ad Error. We could not fetch an ad currently. Please try again.",
+        "ad_prompt_after_view": "⚠️ You must click the 'Go!' button in the previous message, then return and click the button below to confirm viewing and get the points.",
+        "ad_success": "🎉 Awesome! You received <b>{points}</b> points for watching the ad.",
+        "ad_already_pending": "❌ You have already claimed an ad viewing reward. Please click the 'Verify Ad' button in the previous message.",
+        "verify_ad_button": "✅ Verify Ad"
     }
 }
 
@@ -220,7 +243,7 @@ def get_text(key, lang_code='ar'):
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE, referrer_id INTEGER)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS users (telegram_user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0, last_daily_claim DATE, join_bonus_claimed INTEGER DEFAULT 0, language_code TEXT DEFAULT "ar", created_date DATE, referrer_id INTEGER, ad_claim_pending INTEGER DEFAULT 0)') # تم إضافة ad_claim_pending
         cursor.execute('CREATE TABLE IF NOT EXISTS ssh_accounts (id INTEGER PRIMARY KEY, telegram_user_id INTEGER NOT NULL, ssh_username TEXT NOT NULL, ssh_password TEXT NOT NULL, created_at TIMESTAMP NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS reward_channels (channel_id INTEGER PRIMARY KEY, channel_link TEXT NOT NULL, reward_points INTEGER NOT NULL, channel_name TEXT NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS user_channel_rewards (telegram_user_id INTEGER, channel_id INTEGER, PRIMARY KEY (telegram_user_id, channel_id))')
@@ -228,6 +251,7 @@ def init_db():
         cursor.execute('CREATE TABLE IF NOT EXISTS redeemed_users (code TEXT, telegram_user_id INTEGER, PRIMARY KEY (code, telegram_user_id))')
         cursor.execute('CREATE TABLE IF NOT EXISTS daily_activity (user_id INTEGER PRIMARY KEY, last_seen_date DATE NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS connection_settings (key TEXT PRIMARY KEY, value TEXT)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS ad_claims (telegram_user_id INTEGER PRIMARY KEY, last_ad_claim TIMESTAMP)')
         
         default_settings = {
             "hostname": "your.hostname.com", "ws_ports": "80, 8880, 8888, 2053",
@@ -263,6 +287,17 @@ def get_user_lang(user_id):
     with sqlite3.connect(DB_FILE) as conn:
         res = conn.execute("SELECT language_code FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
         return res[0] if res else 'ar'
+
+def get_user_ad_status(user_id):
+    with sqlite3.connect(DB_FILE) as conn:
+        # استرجاع حالة انتظار المكافأة
+        ad_pending = conn.execute("SELECT ad_claim_pending FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()
+        return ad_pending[0] if ad_pending else 0
+
+def set_user_ad_status(user_id, status: int):
+     with sqlite3.connect(DB_FILE) as conn:
+        conn.execute("UPDATE users SET ad_claim_pending = ? WHERE telegram_user_id = ?", (status, user_id))
+        conn.commit()
 
 def set_user_lang(user_id, lang_code):
     with sqlite3.connect(DB_FILE) as conn:
@@ -304,7 +339,157 @@ async def check_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
         return False
         
 # =================================================================================
-# 5. أوامر البوت الأساسية
+# 5. دالة طلب وعرض الإعلان (AD Integration Function)
+# =================================================================================
+
+async def get_ad_eligibility(user_id: int):
+    """التحقق مما إذا كان المستخدم مؤهلاً لبدء طلب الإعلان اليوم."""
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute("SELECT last_ad_claim FROM ad_claims WHERE telegram_user_id = ?", (user_id,)).fetchone()
+        if not result:
+            return True, None 
+
+        last_claim_time = datetime.fromisoformat(result[0])
+        time_since_claim = datetime.now() - last_claim_time
+        
+        if time_since_claim >= timedelta(hours=24):
+            return True, None 
+        
+        time_left = timedelta(hours=24) - time_since_claim
+        hours = int(time_left.total_seconds() // 3600)
+        minutes = int((time_left.total_seconds() % 3600) // 60)
+        
+        time_left_str = f"{hours}h {minutes}m"
+        return False, time_left_str
+
+async def get_and_send_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang_code = get_user_lang(user_id)
+    chat_id = update.effective_chat.id
+    
+    # 1. التحقق من حالة المكافأة والوقت
+    is_eligible, time_left = await get_ad_eligibility(user_id)
+    ad_pending = get_user_ad_status(user_id)
+    
+    if ad_pending:
+         await context.bot.send_message(chat_id=chat_id, text=get_text('ad_already_pending', lang_code), parse_mode=ParseMode.HTML); return
+        
+    if not is_eligible:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=get_text('ad_claimed_already', lang_code).format(time_left=time_left),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # 2. إعداد طلب الإعلان (SSP/RichAds)
+    payload = {
+        "language_code": lang_code,
+        "publisher_id": SSP_PUBLISHER_ID,
+        "widget_id": SSP_WIDGET_ID,
+        "bid_floor": 0.0001,
+        "telegram_id": str(user_id),
+        "production": False # False للاختبار، True للإنتاج
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    
+    await context.bot.send_chat_action(chat_id=chat_id, action='upload_photo')
+
+    try:
+        # إرسال طلب SSP
+        ssp_response = requests.post(SSP_ENDPOINT, json=payload, headers=headers, timeout=10)
+        ssp_response.raise_for_status()
+        ad_data = ssp_response.json()
+        
+        if not ad_data or not isinstance(ad_data, list) or len(ad_data) == 0:
+            await context.bot.send_message(chat_id=chat_id, text=get_text('ad_server_error', lang_code))
+            return
+            
+        ad = ad_data[0]
+        
+        # 3. إرسال الإعلان المستلم إلى تليجرام (sendPhoto)
+        caption_text = (
+            f"*{html.escape(ad.get('title', 'Ad'))}*\n\n"
+            f"{html.escape(ad.get('message', ''))}\n\n"
+            f"Brand: {html.escape(ad.get('brand', ''))}"
+        )
+        
+        # الزر الأول: زر النقر على الإعلان (للذهاب إلى الرابط)
+        ad_inline_keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": html.escape(ad.get('button', 'Go!')), "url": ad.get('link', 'https://t.me/telegram')}
+                ]
+            ]
+        }
+        
+        TELEGRAM_URL = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+        
+        telegram_payload = {
+            'chat_id': chat_id,
+            'photo': ad.get('image', 'https://placehold.co/600x400/AAAAAA/FFFFFF?text=AD'), 
+            'caption': caption_text,
+            'parse_mode': 'Markdown',
+            'reply_markup': json.dumps(ad_inline_keyboard)
+        }
+        
+        telegram_response = requests.post(TELEGRAM_URL, data=telegram_payload)
+        telegram_response.raise_for_status()
+        
+        # 4. إرسال رسالة التأكيد والمكافأة (رسالة منفصلة لتحفيز العودة والنقر)
+        verification_keyboard = [[InlineKeyboardButton(get_text('verify_ad_button', lang_code), callback_data='verify_ad_click')]]
+        
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=get_text('ad_prompt_after_view', lang_code),
+            reply_markup=InlineKeyboardMarkup(verification_keyboard),
+            parse_mode=ParseMode.HTML
+        )
+
+        # 5. تسجيل حالة انتظار المكافأة
+        set_user_ad_status(user_id, 1)
+
+        
+    except requests.exceptions.RequestException as e:
+        print(f"AD Integration Error: {e}"); traceback.print_exc()
+        await context.bot.send_message(chat_id=chat_id, text=get_text('ad_server_error', lang_code))
+
+async def verify_ad_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يمنح النقطة بعد ضغط المستخدم على زر 'تحققت'."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    lang_code = get_user_lang(user_id)
+    
+    if get_user_ad_status(user_id) == 0:
+        await query.edit_message_text("ℹ️ لا توجد مطالبة إعلان قيد الانتظار حالياً.")
+        return
+        
+    # 1. منح المكافأة وتسجيل المطالبة
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET points = points + ?, ad_claim_pending = 0 WHERE telegram_user_id = ?", (AD_REWARD_POINTS, user_id))
+            cursor.execute("INSERT OR REPLACE INTO ad_claims (telegram_user_id, last_ad_claim) VALUES (?, ?)", (user_id, datetime.now().isoformat()))
+            new_balance = cursor.execute("SELECT points FROM users WHERE telegram_user_id = ?", (user_id,)).fetchone()[0]
+            conn.commit()
+            
+        await query.edit_message_text(
+            get_text('ad_success', lang_code).format(points=AD_REWARD_POINTS),
+            parse_mode=ParseMode.HTML
+        )
+        
+    except Exception as e:
+        print(f"Error processing ad reward: {e}")
+        await query.edit_message_text(f"❌ حدث خطأ أثناء منح المكافأة: {e}")
+        
+    # تحديث قائمة كسب النقاط
+    await earn_points_command(update, context, from_callback=True)
+
+
+# =================================================================================
+# 6. أوامر البوت الأساسية
 # =================================================================================
 @log_activity
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False):
@@ -416,6 +601,7 @@ async def create_ssh_account(update: Update, context: ContextTypes.DEFAULT_TYPE)
         payload = get_connection_setting("payload")
         
         try:
+            # افتراض أن chage موجود لتتبع الانتهاء
             expiry_output = subprocess.check_output(['/usr/bin/chage', '-l', username], text=True, stderr=subprocess.DEVNULL)
             expiry_line = next((line for line in expiry_output.split('\n') if "Account expires" in line), None)
             expiry = expiry_line.split(':', 1)[1].strip() if expiry_line else "N/A"
@@ -504,8 +690,35 @@ async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     with sqlite3.connect(DB_FILE) as conn:
         all_channels = conn.execute("SELECT channel_id, channel_link, reward_points, channel_name FROM reward_channels").fetchall()
         claimed_ids = {row[0] for row in conn.execute("SELECT channel_id FROM user_channel_rewards WHERE telegram_user_id = ?", (user_id,))}
+        
+    # =========================================================================
+    # 📌 إضافة زر مشاهدة الإعلان
+    # =========================================================================
     
     keyboard = []
+    
+    # زر مشاهدة الإعلان
+    is_eligible, ad_time_left = await get_ad_eligibility(user_id)
+    ad_button_text = get_text('watch_ad_button', lang_code).format(points=AD_REWARD_POINTS)
+    
+    ad_pending = get_user_ad_status(user_id)
+
+    if ad_pending:
+        # إذا كان ينتظر المكافأة، عرض زر التحقق
+        keyboard.append([InlineKeyboardButton(get_text('verify_ad_button', lang_code), callback_data='verify_ad_click')])
+    elif is_eligible:
+        # إذا كان مؤهلاً (مر 24 ساعة)، عرض زر المشاهدة لبدء العملية
+        keyboard.append([InlineKeyboardButton(ad_button_text, callback_data='watch_ad')])
+    else:
+        # إذا لم يكن مؤهلاً، عرض الوقت المتبقي
+        ad_info = get_text('ad_claimed_already', lang_code).format(time_left=ad_time_left)
+        keyboard.append([InlineKeyboardButton(ad_info, callback_data='dummy')])
+        
+    keyboard.append([InlineKeyboardButton("-------------------------------------", callback_data="dummy")])
+    
+    # =========================================================================
+    # قنوات الانضمام العادية
+    # =========================================================================
     for cid, link, points, name in all_channels:
         if cid in claimed_ids:
             button_text = f"✅ {name}"
@@ -514,16 +727,17 @@ async def earn_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             button_text = f"{name} (+{points} {get_text('points', lang_code)})"
             keyboard.append([InlineKeyboardButton(button_text, url=link)])
             keyboard.append([InlineKeyboardButton(get_text('verify_join_button', lang_code), callback_data=f"verify_r_{cid}_{points}")])
-    
+            
     if all_channels:
         keyboard.append([InlineKeyboardButton("-----------", callback_data="dummy")])
+        
     keyboard.append([InlineKeyboardButton(get_text('referral_button', lang_code), callback_data='get_referral_link')])
 
     if from_callback:
         reply_func = update.callback_query.edit_message_text
     else:
         reply_func = update.message.reply_text
-    
+        
     await reply_func(get_text('rewards_header', lang_code), reply_markup=InlineKeyboardMarkup(keyboard))
 
 @log_activity
@@ -552,7 +766,7 @@ async def set_language_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await start(update, context, from_callback=True)
 
 # =================================================================================
-# 6. Admin Panel & Features
+# 7. Admin Panel & Features
 # =================================================================================
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -859,6 +1073,18 @@ async def verify_reward_callback(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer(get_text('reward_success', lang_code).format(points=points), show_alert=True)
     await earn_points_command(update, context, from_callback=True)
 
+async def watch_ad_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة النقر على زر 'شاهد إعلاناً' لبدء عملية العرض."""
+    query = update.callback_query
+    await query.answer("جاري جلب الإعلان...")
+    
+    # استدعاء دالة جلب وإرسال الإعلان، والتي تسجل حالة انتظار المكافأة
+    await get_and_send_ad(update, context)
+    
+    # تحديث قائمة كسب النقاط لعرض زر التحقق
+    await earn_points_command(update, context, from_callback=True)
+
+
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang_code = get_user_lang(update.effective_user.id)
     await update.message.reply_text(get_text('operation_cancelled', lang_code))
@@ -866,7 +1092,7 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ConversationHandler.END
 
 # =================================================================================
-# 9. نقطة انطلاق البوت (Main Entry Point)
+# 8. نقطة انطلاق البوت (Main Entry Point)
 # =================================================================================
 def main():
     init_db()
@@ -875,6 +1101,7 @@ def main():
         print("FATAL ERROR: Bot token is not set.")
         sys.exit(1)
 
+    # يجب تثبيت مكتبة requests عبر: pip install python-telegram-bot requests
     app = ApplicationBuilder().token(TOKEN).build()
     
     conv_defaults = {'per_user': True, 'per_message': False, 'allow_reentry': True}
@@ -951,6 +1178,8 @@ def main():
     app.add_handler(CallbackQueryHandler(remove_channel_confirm, pattern='^remove_c_'))
     app.add_handler(CallbackQueryHandler(set_language_callback, pattern='^set_lang_'))
     app.add_handler(CallbackQueryHandler(get_referral_link_callback, pattern='^get_referral_link$'))
+    app.add_handler(CallbackQueryHandler(watch_ad_callback, pattern='^watch_ad$')) 
+    app.add_handler(CallbackQueryHandler(verify_ad_claim, pattern='^verify_ad_click$')) # المعالج الجديد لزر التحقق
     app.add_handler(CallbackQueryHandler(lambda u,c: u.callback_query.answer(), pattern='^dummy$'))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern='^admin_'))
 
